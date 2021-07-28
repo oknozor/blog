@@ -25,7 +25,7 @@ Before going further I would like to share some reminiscence.
 I've been playing age of empire for two decades now. Actually Age of Empire I is the first game I ever played. 
 In 1998 we had no computer at home so my father took me to is office from time to time to play AoE for a couple of hour. 
 
-In the early 2000s I used to play at one of my friend's home with his elder browser.
+In the early 2000s I used to play at one of my friend's home with his elder brother.
 We were playing in separate room so no one can cheat looking at is opponent screen. 
 Later during high school we orginazed 4vs4 AoE2 LANs with friends.
 I was in charge of settings up the network for every one and bringing a cracked version
