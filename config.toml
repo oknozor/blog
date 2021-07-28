@@ -1,5 +1,5 @@
 # The URL the site will be built for
-base_url = "https://example.com"
+base_url = "https://oknozor.github.io/blog"
 
 title = "Okno's blog"
 
@@ -24,4 +24,4 @@ hyde_links = []
 
 [author]
 name = "Paul Delafosse"
-homepage = "https://www.vincentprouillet.com"
+homepage = "https://oknozor.github.io/blog"
