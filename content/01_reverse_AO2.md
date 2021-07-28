@@ -1,20 +1,20 @@
 +++
-title = "Reverse engineering Age of empire II - Part I - Text Helpers"
+title = "Reverse engineering Age of Empires II - Part I - Text Helpers"
 date = 2021-07-28
 +++
 
 ## Introduction 
 
-In this blog serie I will share my Ao2DE reverse engineering journey. I will try my best
-to spare you all the boring details, hour of diggin through AoE2 game data and abandonned github repository.  
+In this blog series I will share my Ao2DE reverse engineering journey. I will try my best
+to spare you all the boring details, hour of digging through AoE2 game data and abandoned github repository.  
 
-People have been reverse engineering Ao2 for two decade and I wouldn't be going anywere 
+People have been reverse engineering Ao2 for two decade, and I wouldn't be going anywhere 
 if it was not standing on those giant shoulders.
 
-I won't go to deep in the actual implementation but I will asume some basic coding knowledge along the articles.
+I won't go to deep in the actual implementation, but I will assume some basic coding knowledge along the articles.
 I will use the following languages/technologies: Rust, Java, Quarkus, Postgresql. 
 
-The work I am doing here will be shared on github under the [scout.gg](https://github.com/scout-gg) organization.
+The work I am doing here will be shared on GitHub under the [scout.gg](https://github.com/scout-gg) organization.
 At the moment most of our repositories are not ready to use and are still in private mode. We will release everything once
 we are ready. Meanwhile, anyone wanting to contribute is more that welcome.
 
@@ -22,21 +22,21 @@ we are ready. Meanwhile, anyone wanting to contribute is more that welcome.
 
 Before going further I would like to share some reminiscence. 
 
-I've been playing age of empire for two decades now. Actually Age of Empire I is the first game I ever played. 
-In 1998 we had no computer at home so my father took me to is office from time to time to play AoE for a couple of hour. 
+I've been playing Age of Empires for two decades now. Actually Age of Empire I is the first game I ever played. 
+In 1998, we had no computer at home, so my father took me to is office from time to time to play AoE for a couple of hour. 
 
 In the early 2000s I used to play at one of my friend's home with his elder brother.
-We were playing in separate room so no one can cheat looking at is opponent screen. 
-Later during high school we orginazed 4vs4 AoE2 LANs with friends.
-I was in charge of settings up the network for every one and bringing a cracked version
+We were playing in separate rooms so no one can cheat looking at is opponent screen. 
+Later during high school we organized 4vs4 AoE2 LANs with friends.
+I was in charge of settings up the network for everyone and bringing a cracked version
 of Ao2 the conquerors (don't tell Microsoft please). 
-We drank beer, and smoked marijuana, spammed **14** and played the best game ever made. 
+We drank beer, smoked marijuana and spammed **14** playing the best game ever made. 
 
-Evoking this memory fills me with nostalgia and I am pretty sure most AoE2 players of my generation can relate.
+Evoking this memory fills me with nostalgia, and I am pretty sure most AoE2 players of my generation can relate.
 
-### Age of empire versions 
+### Age of Empires versions 
 
-Since the first release of Age of empire II in 1999 many extention and new version as been published :
+Since the first release of Age of Empires II in 1999 many extensions and new versions were published :
 - The conqueror : the first expansion pack release in 2000 
 - HD Edition and its many addons (2013) 
     - The Forgotten
@@ -50,15 +50,15 @@ Along this blog post we will focus on the Definitive editions. Its the latest an
 
 ## Siege Engineers
 
-One day, my friend Alex told me he was working on [aoe2techtree.net](https://aoe2techtree.net) clone.
-He started this has a hobby project to learn a new javascript framework. I was quite interested and 
-when he told me how hard it was for him to collect game data I started to look at aoe2techtree codes 
+One day, my friend Alex told me he was working on an [aoe2techtree](https://aoe2techtree.net) clone.
+He started this as a hobby project to learn a new javascript framework. I was quite interested and 
+when he told me how hard it was for him to collect gamedata I started to look at aoe2techtree codes 
 to understand where the data came from. 
 
 Turns out there is developper collective dedicated to Age of Empire reverse engineers called [Siege Engineer](https://aoe2.se/).
 The amount of amazing project going on there is just incredible. Game record analysis, techtree, game replay, modding ...
 It would take an entire book to list every Ao2 related project made by those people, 
-you can check their repository [here](https://github.com/SiegeEngineers/).  
+you can check their repositories [here](https://github.com/SiegeEngineers/).  
 
 After asking around where I could get the techtree data I found some usefull tools : 
 - [aoe2dat](https://github.com/HSZemi/aoe2dat) is a small C++ program to extract raw data from the game and convert
@@ -69,13 +69,13 @@ After asking around where I could get the techtree data I found some usefull too
 
 ## Exploring the data
 
-The age of Empire II De instalation folder contain a file called `empires2_x2_p1.dat`, this is the grall of Ao2 reverse engineers. 
-It's a binary containing about every usefull information on the game : unit stats, buildings, technologies, sound, sprite location etc.
+The age of Empire II De installation folder contain a file called `empires2_x2_p1.dat`, this is the grall of AoE2 reverse engineers. 
+It's a binary containing about every useful information on the game : unit stats, buildings, technologies, sound, sprite location etc.
 
 If you are a linux user like me and installed the game via steam you can find this file in  `$HOME"/.steam/steam/steamapps/common/AoE2DE/resources/_common/dat/empires2_x2_p1.dat`. 
 
 
-### Extrating data via aoe2dat
+### Extracting data via aoe2dat
 
 I installed [aoe2dat](https://github.com/HSZemi/aoe2dat) and followed the build instruction. 
 After a bit of struggle with the needed library I manage to extract the game data : 
@@ -105,7 +105,7 @@ aoe2dat create two file from the parsed binary :
 ```
 
 The above sample represent the data for the [Chemistry](https://ageofempires.fandom.com/wiki/Chemistry) technology, 
-It is quite self explanatory appart from the `help_converter` and languages fields, 
+It is quite self-explanatory apart from the `help_converter` and languages fields, 
 these are actually mapping to some internationalized text in some other game files. 
 
 ### Getting help texts
@@ -181,7 +181,7 @@ It's a match !
 
 Hooray ! We now have the first bits and pieces to build a techtree with some textual information.
 
-This concludes the first part on this serie, in the next post we will create and populate a database
+This concludes the first part on this series, in the next post we will create and populate a database
 from ao2edat/genie extracted game data. 
 
 
