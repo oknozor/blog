@@ -5,7 +5,18 @@ date = 2021-07-28
 
 ## Introduction 
 
-// TODO 
+In this blog serie I will share my Ao2DE reverse engineering journey. I will try my best
+to spare you all the boring details, hour of diggin through AoE2 game data and abandonned github repository.  
+
+People have been reverse engineering Ao2 for two decade and I wouldn't be going anywere 
+if it was not standing on those giant shoulders.
+
+I won't go to deep in the actual implementation but I will asume some basic coding knowledge along the articles.
+I will use the following languages/technologies: Rust, Java, Quarkus, Postgresql. 
+
+The work I am doing here will be shared on github under the [scout.gg](https://github.com/scout-gg) organization.
+At the moment most of our repositories are not ready to use and are still in private mode. We will release everything once
+we are ready. Meanwhile, anyone wanting to contribute is more that welcome.
 
 ### Memories
 
@@ -21,7 +32,7 @@ I was in charge of settings up the network for every one and bringing a cracked 
 of Ao2 the conquerors (don't tell Microsoft please). 
 We drank beer, and smoked marijuana, spammed **14** and played the best game ever made. 
 
-Evoking this memory feel me with nostalgia and I am pretty sure most AoE2 players of my generation feel the same about the game.
+Evoking this memory fills me with nostalgia and I am pretty sure most AoE2 players of my generation can relate.
 
 ### Age of empire versions 
 
@@ -44,8 +55,8 @@ He started this has a hobby project to learn a new javascript framework. I was q
 when he told me how hard it was for him to collect game data I started to look at aoe2techtree codes 
 to understand where the data came from. 
 
-Turns out there is a discord server dedicated to Age of Empire reverse engineers called Siege Engineer.
-The amount of amazig project going on there is just incredible. Game record analysis, techtree, game replay, modding ...
+Turns out there is developper collective dedicated to Age of Empire reverse engineers called [Siege Engineer](https://aoe2.se/).
+The amount of amazing project going on there is just incredible. Game record analysis, techtree, game replay, modding ...
 It would take an entire book to list every Ao2 related project made by those people, 
 you can check their repository [here](https://github.com/SiegeEngineers/).  
 
@@ -168,7 +179,7 @@ It's a match !
 ```
 
 
-Now we have the first bits and pieces to build a techtree with some textual information.
+Hooray ! We now have the first bits and pieces to build a techtree with some textual information.
 
 This concludes the first part on this serie, in the next post we will create and populate a database
 from ao2edat/genie extracted game data. 
