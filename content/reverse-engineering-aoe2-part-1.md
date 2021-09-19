@@ -36,8 +36,8 @@ Evoking this memory fills me with nostalgia, and I am pretty sure most AoE2 play
 
 ### Age of Empires versions 
 
-Since the first release of Age of Empires II in 1999 many extensions and new versions were published :
-- The conqueror : the first expansion pack release in 2000 
+Since the first release of Age of Empires II in 1999 many extensions and new versions were published:
+- The conqueror: the first expansion pack release in 2000 
 - HD Edition and its many addons (2013) 
     - The Forgotten
     - The African Kingdoms
@@ -55,12 +55,12 @@ He started this as a hobby project to learn a new javascript framework. I was qu
 when he told me how hard it was for him to collect gamedata I started to look at aoe2techtree codes 
 to understand where the data came from. 
 
-Turns out there is developper collective dedicated to Age of Empire reverse engineers called [Siege Engineer](https://aoe2.se/).
+Turns out there is developer collective dedicated to Age of Empire reverse engineers called [Siege Engineer](https://aoe2.se/).
 The amount of amazing project going on there is just incredible. Game record analysis, techtree, game replay, modding ...
 It would take an entire book to list every Ao2 related project made by those people, 
 you can check their repositories [here](https://github.com/SiegeEngineers/).  
 
-After asking around where I could get the techtree data I found some usefull tools : 
+After asking around where I could get the techtree data I found some usefull tools: 
 - [aoe2dat](https://github.com/HSZemi/aoe2dat) is a small C++ program to extract raw data from the game and convert
     them to a giant json file (about 300Mb)
 - [genieutils](https://github.com/Tapsa/genieutils) is the backend library for ao2dat, in charge of deserializing the binary file
@@ -70,7 +70,7 @@ After asking around where I could get the techtree data I found some usefull too
 ## Exploring the data
 
 The age of Empire II De installation folder contain a file called `empires2_x2_p1.dat`, this is the grall of AoE2 reverse engineers. 
-It's a binary containing about every useful information on the game : unit stats, buildings, technologies, sound, sprite location etc.
+It's a binary containing about every useful information on the game: unit stats, buildings, technologies, sound, sprite location etc.
 
 If you are a linux user like me and installed the game via steam you can find this file in  `$HOME"/.steam/steam/steamapps/common/AoE2DE/resources/_common/dat/empires2_x2_p1.dat`. 
 
@@ -78,19 +78,19 @@ If you are a linux user like me and installed the game via steam you can find th
 ### Extracting data via aoe2dat
 
 I installed [aoe2dat](https://github.com/HSZemi/aoe2dat) and followed the build instruction. 
-After a bit of struggle with the needed library I manage to extract the game data : 
+After a bit of struggle with the needed library I manage to extract the game data: 
 
 ```shell
 ./aoe2dat "$HOME"/.steam/steam/steamapps/common/AoE2DE/resources/_common/dat/empires2_x2_p1.dat
 ```
 
-aoe2dat create two file from the parsed binary : 
-- `full.json` : A 258Mb json file containing all the game data
-- `units_buildings_techs.json` : A digest version of the full.json file containing only 
+aoe2dat create two file from the parsed binary: 
+- `full.json`: A 258Mb json file containing all the game data
+- `units_buildings_techs.json`: A digest version of the full.json file containing only 
     useful information on techs, units and buildings.
 
 ```json
-	"47" : {
+	"47": {
 		"cost": {
 			"wood": 0,
 			"food": 300,
@@ -110,7 +110,7 @@ these are actually mapping to some internationalized text in some other game fil
 
 ### Getting help texts
 
-Going on with the chemistry example, here are the acual game data we are looking for :
+Going on with the chemistry example, here are the acual game data we are looking for:
 
 ![chemistry](../images/chemistry_techtree.png)
 
@@ -123,7 +123,7 @@ To find this value in the game files, we need to list files in `"$HOME"/.steam/s
 br  _common  de  en  es  fr  hi  it  jp  ko  _launcher  ms  mx  _packages  ru  tr  tw  vi  zh
 ```
 
-Now let's explore english game content : 
+Now let's explore english game content: 
 ```
 ❯ tree"$HOME"/.steam/steam/steamapps/common/AoE2DE/resources/en
 en
@@ -141,7 +141,7 @@ en
 
 The data we are looking for are located in `"$HOME"/.steam/steam/steamapps/common/AoE2DE/resources/en/strings/key-value/key-value-strings-utf8.txt`.
 
-Taking a look at the file content we can see some numeric values mapping to a string content :
+Taking a look at the file content we can see some numeric values mapping to a string content:
 ```
 1150 "Victory!"
 1151 "Defeat!"
@@ -154,13 +154,13 @@ Taking a look at the file content we can see some numeric values mapping to a st
 
 Now we will look for value we previously got for Chemistry in the json file produced by aoe2dat (I am using the french text here to match with my installed game). 
 
-**7047** :  
+**7047**:  
 
 ```
 "Chimie"
 ```
 
-**28047** :
+**28047**:
 
 ```
 "Développer <b>Chimie<b> (<cost>) \nLes unités à projectiles (excepté les unités à poudre à canon) gagnent 
@@ -170,9 +170,9 @@ canon à\nbombarde, tour de bombarde).<b><i>"
 
 It's a match ! 
 
-`107047` does not seem to map to anything in the text helper file, after digging the language file and comparing with other technology and unit data I found out there is actually an offset to get some other usefull help text : `107047 - 99000 = 8047`.
+`107047` does not seem to map to anything in the text helper file, after digging the language file and comparing with other technology and unit data I found out there is actually an offset to get some other usefull help text: `107047 - 99000 = 8047`.
 
-**8047** :
+**8047**:
 
 ```
 "Développer Chimie (+1 d'attaque avec projectiles, excepté pour les unités à poudre à canon)"

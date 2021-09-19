@@ -4,7 +4,7 @@ base_url = "https://oknozor.github.io/blog"
 title = "Okno's blog"
 
 description = """
-Hello, I am Paul Delafosse AKA Okno, Java software developper by day 
+Hello, I am Paul Delafosse AKA Okno, Java software developer by day
 Rustacean by night. 
 """
 
@@ -15,6 +15,9 @@ highlight_code = true
 build_search_index = true
 
 theme = "hyde"
+
+[markdown]
+highlight_code = true
 
 [extra]
 hyde_theme = "theme-base-0d"
