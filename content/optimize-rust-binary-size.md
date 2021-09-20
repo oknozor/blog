@@ -264,7 +264,7 @@ I started to think about optimizing Cocogitto dependencies because of two things
 1. I moved the code responsible for the conventional
    commits parsing to a dedicated crate ([conventional_commit_parser](https://crates.io/crates/conventional_commit_parser)).
 2. I created a fork of the abandoned [spectral](https://github.com/cfrancia/spectral) which I used to write fluent 
-   assertions in the Cocogitto test harness, It is called [speculoos](https://github.com/oknozor/speculoos) (Yes like
+   assertions in the Cocogitto test harness, It is called [speculoos](https://github.com/oknozor/speculoos) (yes like
    the belgian spiced shortcrust biscuit)
 
 Turns out the parser crate was still using spectral, in the end my dev build contained both the assertion libraries
@@ -660,7 +660,7 @@ We got a solid grasp at how this should be done.
 
 ###  Scraping the last bytes away
 
-I am not too comfortable with this but if you want to carve out all possible bytes out of your Rust binary 
+I am not too comfortable with this, but if you want to carve out all possible bytes out of your Rust binary 
 you can use the unix program `strip`. `strip` remove symbols from the final 
 binary/[objectfile](https://en.wikipedia.org/wiki/Object_file).
 
@@ -669,7 +669,7 @@ symbolic cross-references between different modules, relocation information, sta
 program symbols, debugging or profiling information. Other metadata may include the date and time of compilation,
 the compiler name and version, and other identifying information."*
 
-Cargo as a `debug` attribute, which removes debugs symbols from the target binary, just like `strip`. 
+Cargo has a `debug` attribute, which removes debugs symbols from the target binary, just like `strip`. 
 I did not mention it before because I obtained no significant result using this attribute. My guess is
 that rustc always keeps the debugs symbols of the standard library.
 
