@@ -1,5 +1,5 @@
 +++
-title = "How to write a Lapce plugin"
+title = "How to write a Lapce LSP plugin"
 date = 2022-10-18
 +++
 
@@ -23,7 +23,7 @@ handling settings, drawing plugin UI etc.
 Before actually writting a plugin let's review quickly how plugins work under the hood. 
 
 First you can get a global view of the plugin architecture on
-[Lacpe official documentation](https://docs.lapce.dev/development/architecture). 
+[Lapce official documentation](https://docs.lapce.dev/development/architecture). 
 
 Now that you are familiar  with the general architechure let's zoom a bit on LSP plugins. 
 
@@ -132,7 +132,7 @@ For the plugin to be able to declare itself to Lapce we need to edit
       version = "0.1.0"
       ```
 
-2. `volt.toml
+2. `volt.toml`
       ```toml
       # volt.toml
       name = "lapce-java"
@@ -226,7 +226,7 @@ See on github: [5a44c14](https://github.com/oknozor/lapce-java/commit/5a44c1447f
 
 ### Plugin settings
 
-Plugins maus expose settings through lapce UI. These could be specific configurations
+Plugins may expose settings through lapce UI. These could be specific configurations
 for the LSP server, path to a custom LSP executable etc. 
 
 For instance the screenshot below illustrate the settings exposed by the Rust plugin.
