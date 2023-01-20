@@ -1,6 +1,6 @@
 +++
 title = "Announcing Cocogitto 5.3.0"
-date = 2022-01-20
+date = 2023-01-20
 +++
 
 ### Changelog
