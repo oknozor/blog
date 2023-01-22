@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+      <!-- Enable responsiveness on mobile devices-->
+      <!-- viewport-fit=cover is to support iPhone X rounded corners and notch in landscape-->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+
+      <title>Okno&#x27;s blog</title>
+
+      <!-- CSS -->
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/print.css" media="print">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/poole.css">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/hyde.css">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+      
+
+      
+      
+    </head>
+
+    <body class="theme-base-0d ">
+        
+            <div class="sidebar">
+                <div class="container sidebar-sticky">
+                    <div class="sidebar-about">
+                        
+                            <a href="https:&#x2F;&#x2F;oknozor.github.io&#x2F;blog"><h1>Okno&#x27;s blog</h1></a>
+                            
+                            <p class="lead">Hello, I am Paul Delafosse AKA Okno, Java software developer by day
+Rustacean by night. 
+</p>
+                            
+                        
+                    </div>
+
+                    <ul class="sidebar-nav">
+                        
+                        
+                        
+                    </ul>
+                </div>
+            </div>
+        
+
+        <div class="content container">
+            
+<div class="post">
+  <h1 class="post-title">How to write a Lapce LSP plugin</h1>
+  <span class="post-date">2022-10-18</span>
+  <p>This has been asked a lot on the Lapce Discord server so I am going to write a small guide 
+on how to write a Lapce LSP plugin. </p>
+<h2 id="current-state-of-the-plugin-ecosystem">Current state of the plugin ecosystem</h2>
+<p>Lapce plugin system allow you to create a <a href="https://webassembly.org/">wasm</a> binary which will be responsible for starting a LSP 
+server implementation and dispatch message between Lapce and the LSP server. </p>
+<p><a href="https://microsoft.github.io/language-server-protocol/">The Language Server Protocol</a> provides language related features such as autocompletion, 
+refactors, code actions etc. 
+Currently, <strong>communication with a LSP implementation is the only feature avalaible through Lapce plugins</strong>.
+That said, there are ongoing works to provide a LSP superset called <a href="https://github.com/lapce/plugin-server-protocol">Plugin Server Protocol</a> (PSP).
+The goal of PSP is to provide a general abstraction for editor related actions like: launching commands, 
+handling settings, drawing plugin UI etc.</p>
+<h2 id="plugin-architechure">Plugin architechure</h2>
+<p>Before actually writting a plugin let's review quickly how plugins work under the hood. </p>
+<p>First you can get a global view of the plugin architecture on
+<a href="https://docs.lapce.dev/development/architecture">Lapce official documentation</a>. </p>
+<p>Now that you are familiar  with the general architechure let's zoom a bit on LSP plugins. </p>
+<p>Plugin lifecycle roughly goes like this :</p>
+<ul>
+<li>Lapce starts plugins depending on the current editor file extension. </li>
+<li>The plugin determine if it needs to download the LSP server implementation. For instance on first launch, 
+The rust plugin will download <a href="https://rust-analyzer.github.io/">rust-analyzer</a>. Once installed the plugin launch
+the LSP server.</li>
+<li>User action in Lapce (ex: typing) will trigger some events, those events will forwarded Lapce proxy, which will 
+translate those event into LSP request if needed (for instance completion requests).</li>
+<li>The LSP plugin respond via stdout, Lapce proxy translate the LSP response into UI changes. </li>
+<li>So on and so forth.</li>
+</ul>
+<p>This might seems a lot, but fortunatly for us the <a href="https://github.com/lapce/lapce-plugin-rust">lapce-plugin</a> crate does all the heavy lifting for us. 
+All we need to do is to provide some plugin settings to lapce and write the LSP implementation installation 
+and startup logic. </p>
+<h2 id="getting-started">Getting started</h2>
+<p>Lapce plugin can be written in any language that compiles to wasm architecture, but for the sake of simplicity
+we are going to use Rust with the <a href="https://github.com/lapce/lapce-plugin-rust">lapce-plugin</a> crate. </p>
+<p>Before diving into the actual coding we need to pick a LSP implementation. You probably came here with a 
+specific language in mind, to find if there is an LSP implementation available for your language, check 
+<a href="https://microsoft.github.io/language-server-protocol/implementors/servers/">the LSP implemenation list</a>. </p>
+<p>For this tutorial we are going to implement Java support via <a href="https://github.com/eclipse/eclipse.jdt.ls">Eclipse JDTLS</a>. </p>
+<h3 id="prerequisite">Prerequisite</h3>
+<ul>
+<li><a href="https://www.rust-lang.org/tools/install">Rust</a></li>
+<li><a href="https://lapce.dev/">Lapce</a></li>
+<li>LSP implementation specifics (For instance here Java)</li>
+<li>A Github account</li>
+</ul>
+<h3 id="volt-template">Volt template</h3>
+<p>Internally Lapce plugins are called &quot;volts&quot;, I was told that Lapce creator Dongdong Zhou came up with &quot;volt&quot; 
+because Lapce is Lightning Fast 🙂.</p>
+<p>The <a href="https://github.com/lapce-community">lapce-community</a> github org host various plugin and also 
+provide a template repository to create plugins using Rust.</p>
+<p>To get started open <a href="https://github.com/lapce-community/lapce-volt-template/">lapce-community/lapce-volt-template</a>
+and click the &quot;Use this template&quot; button on the repository page. This will create a new repo for your plugin.
+You will need to give your repository a name, we are going to name ours <code>lapce-java</code>. </p>
+<p>Once you are done clone your repository and open it in Lapce.</p>
+<h2 id="setting-up-the-environment">Setting up the environment</h2>
+<p>When listed on the <a href="https://github.com/lapce/lapce.github.io/blob/master/volts2">official plugin list</a> you can install Lapce plugins
+from the UI. Since we are developping a new plugin we will need to install it manually to test it. 
+To install a plugin you need to copy the relevant file to Lapce plugin directory (on linux <code>$HOME/.local/share/lapce-stable/plugins</code>) </p>
+<h3 id="build-script">Build script</h3>
+<p>I personnally like the simplicity of <a href="https://github.com/casey/just">justfiles</a> so I went for a simple
+just script: </p>
+<pre data-lang="just" style="background-color:#2b303b;color:#c0c5ce;" class="language-just "><code class="language-just" data-lang="just"><span>xdg_data_dir :=  &quot;$HOME/.local/share&quot;
+</span><span>plugin_dir := &quot;plugins/oknozor.lapce-java&quot;
+</span><span>
+</span><span>build:
+</span><span>    cargo make
+</span><span>
+</span><span>install-stable: build
+</span><span>    mkdir -p {{xdg_data_dir}}/lapce-stable/{{plugin_dir}}/bin
+</span><span>    yes | cp -i bin/lapce-java.wasm {{xdg_data_dir}}/lapce-stable/{{plugin_dir}}/bin
+</span><span>    yes | cp -i volt.toml {{xdg_data_dir}}/lapce-stable/{{plugin_dir}}/
+</span><span>    rm -rd {{xdg_data_dir}}/lapce-stable/{{plugin_dir}}/jdt-language-server-latest || true
+</span></code></pre>
+<p>To install the plugin you can now run <code>just install stable</code>. If you don't want to use just a simple shell script can do the exact same thing. 
+I strongly advise to install the plugin after each step and launch a java project in Lapce to track your progress.</p>
+<h3 id="debugging">Debugging</h3>
+<p>Along the tutorial you might want to debug your plugin, emit log etc. 
+Here are the few things you can do to get some informations :</p>
+<ol>
+<li>
+<p>Plugin stderr
+You can start lapce in the terminal to inspect plugin log emitted through sdterr. Note that these logs are not emitted with <code>eprintln!</code> macro but using <code>lapce_plugin::PLUGIN_RPC.stderr</code>: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#d08770;">PLUGIN_RPC</span><span>.</span><span style="color:#96b5b4;">stderr</span><span>(&amp;format!(&quot;</span><span style="color:#a3be8c;">Oh no!</span><span>&quot;));
+</span></code></pre>
+</li>
+<li>
+<p>Lapce logs
+LSP error will be forwarded to Lapce log file, you can inspect log via lapce pallete commands <code>&gt;Open Log File</code> 
+and <code>&gt;Open Log Directory</code></p>
+</li>
+</ol>
+<h3 id="changing-the-plugin-metadata">Changing the plugin metadata</h3>
+<p>For the plugin to be able to declare itself to Lapce we need to edit 
+<code>volt.toml</code> and <code>Cargo.toml</code> to replace the template plugin name with the correct name. </p>
+<ol>
+<li>
+<p><code>Cargo.toml</code></p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[package]
+</span><span style="color:#bf616a;">edition </span><span>= &quot;</span><span style="color:#a3be8c;">2021</span><span>&quot;
+</span><span style="color:#bf616a;">name </span><span>= &quot;</span><span style="color:#a3be8c;">lapce-java</span><span>&quot;
+</span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">0.1.0</span><span>&quot;
+</span></code></pre>
+</li>
+<li>
+<p><code>volt.toml</code></p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span style="color:#65737e;"># volt.toml
+</span><span style="color:#bf616a;">name </span><span>= &quot;</span><span style="color:#a3be8c;">lapce-java</span><span>&quot;
+</span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">0.2.0</span><span>&quot;
+</span><span>
+</span><span style="color:#bf616a;">author </span><span>= &quot;</span><span style="color:#a3be8c;">Paul Delafosse &lt;paul.delfafosse@gmail.com&gt;</span><span>&quot;
+</span><span style="color:#bf616a;">display-name </span><span>= &quot;</span><span style="color:#a3be8c;">Java</span><span>&quot;
+</span><span>
+</span><span style="color:#bf616a;">description </span><span>= &quot;</span><span style="color:#a3be8c;">Lapce LSP plugin for java, powered by Eclipse JDT Language Server</span><span>&quot;
+</span><span style="color:#bf616a;">wasm </span><span>= &quot;</span><span style="color:#a3be8c;">bin/lapce-java.wasm</span><span>&quot;
+</span><span>
+</span><span>[activation]
+</span><span style="color:#bf616a;">language </span><span>= [&quot;</span><span style="color:#a3be8c;">java</span><span>&quot;]
+</span><span style="color:#bf616a;">workspace-contains </span><span>= [&quot;</span><span style="color:#a3be8c;">*/*.java</span><span>&quot;]
+</span></code></pre>
+</li>
+</ol>
+<p>See on github: <a href="https://github.com/oknozor/lapce-java/commit/8a1a27840e59fbb7fae47a313080e16b5b010659">8a1a278</a></p>
+<h2 id="implementing-the-plugin">Implementing the plugin</h2>
+<p>We are now ready to write the plugin logic. You would be surprise how little we actually have to code. 
+For our simple Java plugin, the only logic we need to edit resides in the <code>initialize</code> function. </p>
+<p>This function is called by lapce when the &quot;activate&quot;  conditions are met (see <code>volt.toml</code>).</p>
+<h3 id="document-selectors">Document selectors</h3>
+<p>First we need to setup the <code>DocumentSelector</code> which will tell Lapce if it should use the LSP server
+for a given file extention or a language id: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>    </span><span style="color:#b48ead;">let</span><span> document_selector: DocumentSelector = vec![DocumentFilter {
+</span><span>        language: Some(String::from(&quot;</span><span style="color:#a3be8c;">java</span><span>&quot;)),
+</span><span>        pattern: Some(String::from(&quot;</span><span style="color:#a3be8c;">**/*.java</span><span>&quot;)),
+</span><span>        scheme: None,
+</span><span>    }];
+</span></code></pre>
+<p>See on github: <a href="https://github.com/oknozor/lapce-java/commit/1482245404b77776421390658ffcda0e1309f5af">1482245</a></p>
+<h3 id="download-the-lsp-server">Download the LSP server</h3>
+<p>We need to download our lsp server implementation from <a href="https://projects.eclipse.org/projects/eclipse.jdt.ls">eclipse.org</a>. </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>    </span><span style="color:#65737e;">// We are going to extract eclipse jdtls lsp server to this directory
+</span><span>    </span><span style="color:#b48ead;">let</span><span> jdtls_file_name = &quot;</span><span style="color:#a3be8c;">jdt-language-server-latest</span><span>&quot;;
+</span><span>    </span><span style="color:#65737e;">// This is the dowloaded tar archive name
+</span><span>    </span><span style="color:#b48ead;">let</span><span> gz_path = PathBuf::from(format!(&quot;</span><span style="color:#d08770;">{jdtls_file_name}</span><span style="color:#a3be8c;">.tar.gz</span><span>&quot;));
+</span><span>    
+</span><span>    </span><span style="color:#65737e;">// Url to the latest jdtsl server archive
+</span><span>    </span><span style="color:#b48ead;">let</span><span> url = format!(
+</span><span>        &quot;</span><span style="color:#a3be8c;">http://download.eclipse.org/jdtls/snapshots/</span><span style="color:#d08770;">{}</span><span style="color:#a3be8c;">.tar.gz</span><span>&quot;,
+</span><span>        jdtls_file_name
+</span><span>    );
+</span><span>
+</span><span>    </span><span style="color:#65737e;">// If the path does not exists yet we need to download and or extract the server archive
+</span><span>    </span><span style="color:#b48ead;">if </span><span>!PathBuf::from(jdtls_file_name).</span><span style="color:#96b5b4;">exists</span><span>() {
+</span><span>        </span><span style="color:#65737e;">// if the tarball does not exist, retrieve it from eclipse.org
+</span><span>        </span><span style="color:#b48ead;">if </span><span>!gz_path.</span><span style="color:#96b5b4;">exists</span><span>() {
+</span><span>            </span><span style="color:#b48ead;">let mut</span><span> resp = Http::get(&amp;url)?;
+</span><span>            </span><span style="color:#b48ead;">let</span><span> body = resp.</span><span style="color:#96b5b4;">body_read_all</span><span>()?;
+</span><span>            std::fs::write(&amp;gz_path, body)?;
+</span><span>        }
+</span><span>
+</span><span>        </span><span style="color:#65737e;">// Extract the tarball to &quot;jdt-language-server-latest&quot;
+</span><span>        </span><span style="color:#b48ead;">let</span><span> tar_gz = std::fs::File::open(gz_path).</span><span style="color:#96b5b4;">unwrap</span><span>();
+</span><span>        </span><span style="color:#b48ead;">let</span><span> tar = MultiGzDecoder::new(tar_gz);
+</span><span>        </span><span style="color:#b48ead;">let mut</span><span> archive = tar::Archive::new(tar);
+</span><span>        </span><span style="color:#b48ead;">let</span><span> dir = PathBuf::from(jdtls_file_name);
+</span><span>        std::fs::create_dir(&amp;dir)?;
+</span><span>        </span><span style="color:#b48ead;">for </span><span>(_, file) in archive.</span><span style="color:#96b5b4;">entries</span><span>().</span><span style="color:#96b5b4;">unwrap</span><span>().</span><span style="color:#96b5b4;">raw</span><span>(</span><span style="color:#d08770;">true</span><span>).</span><span style="color:#96b5b4;">enumerate</span><span>() {
+</span><span>            </span><span style="color:#b48ead;">let mut</span><span> entry = file?;
+</span><span>            </span><span style="color:#b48ead;">let</span><span> entry_type = entry.</span><span style="color:#96b5b4;">header</span><span>().</span><span style="color:#96b5b4;">entry_type</span><span>();
+</span><span>            </span><span style="color:#b48ead;">if </span><span>!entry_type.</span><span style="color:#96b5b4;">is_dir</span><span>() &amp;&amp; !entry_type.</span><span style="color:#96b5b4;">is_file</span><span>() {
+</span><span>                </span><span style="color:#b48ead;">continue</span><span>;
+</span><span>            }
+</span><span>
+</span><span>            </span><span style="color:#b48ead;">let</span><span> entry_path = dir.</span><span style="color:#96b5b4;">join</span><span>(&amp;entry.</span><span style="color:#96b5b4;">path</span><span>()?);
+</span><span>            </span><span style="color:#b48ead;">if</span><span> entry_type.</span><span style="color:#96b5b4;">is_dir</span><span>() {
+</span><span>                std::fs::create_dir_all(&amp;entry_path)?;
+</span><span>            } </span><span style="color:#b48ead;">else if</span><span> entry_type.</span><span style="color:#96b5b4;">is_file</span><span>() {
+</span><span>                </span><span style="color:#b48ead;">let mut</span><span> outfile = File::create(&amp;entry_path)?;
+</span><span>                std::io::copy(&amp;</span><span style="color:#b48ead;">mut</span><span> entry, &amp;</span><span style="color:#b48ead;">mut</span><span> outfile)?;
+</span><span>            }
+</span><span>        }
+</span><span>    }
+</span></code></pre>
+<p>See on github: <a href="https://github.com/oknozor/lapce-java/commit/5a44c1447fea01e04620243e3047df84ee2e878b">5a44c14</a></p>
+<h3 id="plugin-settings">Plugin settings</h3>
+<p>Plugins may expose settings through lapce UI. These could be specific configurations
+for the LSP server, path to a custom LSP executable etc. </p>
+<p>For instance the screenshot below illustrate the settings exposed by the Rust plugin.</p>
+<p><img src="https://oknozor.github.io/blog/how-to-lapce-plugin/../images/lapce-settings.png" alt="lapce-settings-screenshot" /></p>
+<p>One thing we definitely want to support in the Java LSP language server is <a href="https://projectlombok.org/">lombok</a> support. 
+It is widely used and lombok code generation is likely to emit tons of error if not supported by our LSP server. </p>
+<p>To display the option in lapce UI we first need to add the setting to our <code>volt.toml</code> file: </p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[config.&quot;</span><span style="color:#a3be8c;">lombok</span><span>&quot;]
+</span><span style="color:#bf616a;">default </span><span>= </span><span style="color:#d08770;">false
+</span><span style="color:#bf616a;">description </span><span>= &quot;</span><span style="color:#a3be8c;">Enable the lombok java agent</span><span>&quot;
+</span></code></pre>
+<p>And then parse those param in the `initialize function: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>    </span><span style="color:#b48ead;">let mut</span><span> enable_lombok_agent = </span><span style="color:#d08770;">false</span><span>;
+</span><span>
+</span><span>    </span><span style="color:#b48ead;">if let </span><span>Some(options) = params.initialization_options.</span><span style="color:#96b5b4;">as_ref</span><span>() {
+</span><span>        </span><span style="color:#b48ead;">if let </span><span>Some(enable_lombok) = options.</span><span style="color:#96b5b4;">get</span><span>(&quot;</span><span style="color:#a3be8c;">lombok</span><span>&quot;) {
+</span><span>            enable_lombok_agent = serde_json::from_value(enable_lombok.</span><span style="color:#96b5b4;">clone</span><span>())?;
+</span><span>        }
+</span><span>    </span><span style="color:#65737e;">// ... etc
+</span><span>    }
+</span></code></pre>
+<p>Then we need to check on start if the lombok jar is present or else download it
+and add it to the lsp server parameters: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>    </span><span style="color:#b48ead;">if</span><span> enable_lombok_agent {
+</span><span>        </span><span style="color:#b48ead;">let</span><span> lombok_jar = &quot;</span><span style="color:#a3be8c;">lombok.jar</span><span>&quot;;
+</span><span>        </span><span style="color:#b48ead;">let</span><span> lombok_url = format!(&quot;</span><span style="color:#a3be8c;">https://projectlombok.org/downloads/</span><span style="color:#d08770;">{lombok_jar}</span><span>&quot;);
+</span><span>
+</span><span>        </span><span style="color:#b48ead;">if </span><span>!PathBuf::from(lombok_jar).</span><span style="color:#96b5b4;">exists</span><span>() {
+</span><span>            </span><span style="color:#b48ead;">let mut</span><span> resp = Http::get(&amp;lombok_url)?;
+</span><span>            </span><span style="color:#b48ead;">let</span><span> body = resp.</span><span style="color:#96b5b4;">body_read_all</span><span>()?;
+</span><span>            std::fs::write(&amp;lombok_jar, body)?;
+</span><span>        }
+</span><span>
+</span><span>        </span><span style="color:#b48ead;">let</span><span> lombok = base_path.</span><span style="color:#96b5b4;">join</span><span>(&quot;</span><span style="color:#a3be8c;">lombok.jar</span><span>&quot;)?;
+</span><span>        </span><span style="color:#b48ead;">let</span><span> lombok = lombok.</span><span style="color:#96b5b4;">to_file_path</span><span>().</span><span style="color:#96b5b4;">expect</span><span>(&quot;</span><span style="color:#a3be8c;">failed to get file path</span><span>&quot;);
+</span><span>        </span><span style="color:#b48ead;">let</span><span> lombok = lombok.</span><span style="color:#96b5b4;">to_string_lossy</span><span>();
+</span><span>        server_args.</span><span style="color:#96b5b4;">push</span><span>(format!(&quot;</span><span style="color:#a3be8c;">--jvm-arg=-javaagent:</span><span style="color:#d08770;">{lombok}</span><span>&quot;));
+</span><span>    }
+</span></code></pre>
+<p>And that's it, lombok should work with the LSP server now!</p>
+<p>See on github: <a href="https://github.com/oknozor/lapce-java/commit/2a7953147a7755f1e85204acb8989a91d1ab7247">2a79531</a></p>
+<h2 id="making-a-pr-to-lapce-plugin-repository">Making a PR to Lapce plugin repository</h2>
+<p>Once you have tested your plugin and are happy with the result, you can publish it to Lapce
+by making a PR to <a href="https://github.com/lapce/lapce.github.io">lapce/lapce.github.io</a>.</p>
+<p>See on github: <a href="https://github.com/lapce/lapce.github.io/pull/39/files">lapce.github.io/pull/39/files</a></p>
+<h2 id="conclusion">Conclusion</h2>
+<p>That all for now, if you have suggestion to improve this article please submit a PR to <a href="https://github.com/oknozor/blog">oknozor/blog</a>. 
+You can ask for help on Lapce's <a href="https://discord.gg/n8tGJ6Rn6D">Discord server</a>. </p>
+
+</div>
+
+        </div>
+
+    </body>
+
+</html>

@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+      <!-- Enable responsiveness on mobile devices-->
+      <!-- viewport-fit=cover is to support iPhone X rounded corners and notch in landscape-->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+
+      <title>Okno&#x27;s blog</title>
+
+      <!-- CSS -->
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/print.css" media="print">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/poole.css">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/hyde.css">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+      
+
+      
+      
+    </head>
+
+    <body class="theme-base-0d ">
+        
+            <div class="sidebar">
+                <div class="container sidebar-sticky">
+                    <div class="sidebar-about">
+                        
+                            <a href="https:&#x2F;&#x2F;oknozor.github.io&#x2F;blog"><h1>Okno&#x27;s blog</h1></a>
+                            
+                            <p class="lead">Hello, I am Paul Delafosse AKA Okno, Java software developer by day
+Rustacean by night. 
+</p>
+                            
+                        
+                    </div>
+
+                    <ul class="sidebar-nav">
+                        
+                        
+                        
+                    </ul>
+                </div>
+            </div>
+        
+
+        <div class="content container">
+            
+<div class="post">
+  <h1 class="post-title">Optimize Rust binaries size with cargo and Semver</h1>
+  <span class="post-date">2021-09-19</span>
+  <h2 id="a-bit-of-context">A bit of context</h2>
+<p>These past days I worked a lot on <a href="https://github.com/oknozor/cocogitto">Cocogitto</a>'s next version. 
+Cocogitto is a tool I started to write about two years ago to automate SemVer bumps and ease conventional commits creation.
+I won't explain in detail here what Cocogitto does so check it out ! All you have to know for now is that Cocogitto has 
+two binaries: </p>
+<ul>
+<li>
+<p><code>coco</code> to create conventional commits like this.
+<img src="https://oknozor.github.io/blog/optimize-rust-binary-size/../images/rust_binary_size/coco_commit.png" alt="coco_commit" /></p>
+</li>
+<li>
+<p><code>cog</code> which allow you to create version automatically based on your conventional commit history.
+<img src="https://oknozor.github.io/blog/optimize-rust-binary-size/../images/rust_binary_size/cog_bump.png" alt="cog_bump" /></p>
+</li>
+</ul>
+<p>There is a lot more to it, but this is beyond the scope of this post.</p>
+<p>Few weeks ago I created a <a href="https://github.com/oknozor/cocogitto-action">GitHub action</a> that downloads the binaries,
+verify your commit history compliance with the conventional commit specification. Additionally, the action allow you 
+to automate releases. </p>
+<p>Before that I was not too interested in reducing the size of the two binaries. </p>
+<p>Now that I use this mechanism an HTTP call is made on every push to the repos using cocogitto's GitHub action to 
+download the binaries, perform the required checks and/or perform a release. Having the smallest possible binary 
+is now a must to speed up all CI pipelines using Cocogitto.</p>
+<h2 id="getting-started">Getting started</h2>
+<p>I had read some blog post about rust binary size optimization before, but never tried to actually do it. 
+Prior to any optimization, the size of our binaries was the following: </p>
+<ul>
+<li><code>coco</code>: <strong>5.1M</strong> </li>
+<li><code>cog</code>: <strong>5.7M</strong> </li>
+</ul>
+<p>Ouch! About 11 Megabytes for two binary, that's a lot. In comparison, let us examine some first grade CLIs apps:</p>
+<ul>
+<li><code>git</code> <strong>3.4M</strong></li>
+<li><code>bat</code> <strong>4.6M</strong></li>
+<li><code>rustup</code> <strong>8M</strong></li>
+</ul>
+<p>Feature wise, <code>cog</code> and <code>coco</code> are way smaller than those tools. 
+There must be room for improvement !</p>
+<p>Fortunately there are plenty of blog posts and rust books out there. I recommend reading the following article
+which describe the primary goals of cargo designs. It might not seem relevant yet, but it will 
+become crystal clear by the end of this post:</p>
+<blockquote>
+<p><em>&quot;Cargo is not just a dependency manager, but Rust's primary workflow tool.&quot;</em></p>
+<p>From the Rust lang blog: <a href="https://blog.rust-lang.org/2016/05/05/cargo-pillars.html">predictable dependency management</a></p>
+</blockquote>
+<h2 id="cargo-optimizations">Cargo optimizations</h2>
+<p>I did some research and found <a href="https://arusahni.net/blog/2020/03/optimizing-rust-binary-size.html">a blog post by arusahni</a>
+and <a href="https://nnethercote.github.io/perf-book/build-configuration.html?highlight=lto#link-time-optimization">the build configuration chapter</a>
+in the rust performance book. </p>
+<p>Let's get to it !</p>
+<h3 id="optimization-level">Optimization level</h3>
+<p>Compile time optimization can be achieved by tweaking your <code>Cargo.toml</code> release profile.
+For an exhaustive list of available option checkout <a href="https://doc.rust-lang.org/cargo/reference/profiles.html">the cargo reference</a>.</p>
+<p>The <code>opt-level</code> attribute control the level of optimization performed by rustc. </p>
+<p>As stated in the Cargo book: <em>&quot;It is recommended 
+to experiment with different levels to find the right balance for your project. There may be surprising results, 
+such as level 3 being slower than 2, or the &quot;s&quot; and &quot;z&quot; levels not being necessarily smaller. You may also want to 
+reevaluate your settings over time as newer versions of rustc changes optimization behavior.&quot;</em> </p>
+<p>Before we start tweaking our <code>Cargo.toml</code> keep in mind that our goal is only to reduce the released binaries size. 
+In the process compile time might increase, unfortunately we can't have the cake and eat it too. That said, for the sake
+of information, we will still inspect the build time before and after optimizing the binaries size.</p>
+<p>To do this we can run <code>cargo build</code> with the following flags : </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cargo</span><span> +nightly build</span><span style="color:#bf616a;"> -Z</span><span> timings</span><span style="color:#bf616a;"> --release
+</span></code></pre>
+<iframe id="zbuild-no-opt"
+    title="Build time report generated by cargo"
+    width="100%"
+    height="800"
+    src="../images/rust_binary_size/cargo-timing-no-opt.html">
+</iframe>
+<p>Remember we started from the following sizes:</p>
+<ul>
+<li><code>coco</code>: <strong>5.1M</strong></li>
+<li><code>cog</code>: <strong>5.7M</strong></li>
+</ul>
+<p>So let us try those optimizations levels !</p>
+<hr />
+<p><strong>Level <code>s</code>:</strong></p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= &quot;</span><span style="color:#a3be8c;">s</span><span>&quot;
+</span></code></pre>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>5.3M</strong></li>
+<li><code>cog</code>: <strong>5.9M</strong></li>
+</ul>
+<p><code>s</code> optimization level produce slightly heavier binaries, next ! </p>
+<hr />
+<p><strong>Level <code>z</code>:</strong></p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= &quot;</span><span style="color:#a3be8c;">z</span><span>&quot;
+</span></code></pre>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>5.5M</strong></li>
+<li><code>cog</code>: <strong>6.2M</strong></li>
+</ul>
+<p>This is getting worse ! </p>
+<hr />
+<p><strong>Level <code>1</code>:</strong></p>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>9.4M</strong></li>
+<li><code>cog</code>: <strong>12M</strong></li>
+</ul>
+<p>No way ! </p>
+<hr />
+<p><strong>Level <code>2</code>:</strong></p>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>5.1M</strong></li>
+<li><code>cog</code>: <strong>5.7M</strong></li>
+</ul>
+<p>Okay, this is the default optimization level.</p>
+<hr />
+<p><strong>Level <code>3</code>:</strong></p>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>5.1M</strong></li>
+<li><code>cog</code>: <strong>5.7M</strong></li>
+</ul>
+<p>Exactly like level <code>2</code>, we made no progress here... </p>
+<hr />
+<p>Let's jump to the next optimization flag, we might want to 
+retry switching between <code>2</code> and <code>3</code> when other optimization will be set. </p>
+<h3 id="link-time-optimization">Link time optimization</h3>
+<p>The link time optimization flag controls how the LLVM backend will try to optimize the binary. This comes at the cost 
+of longer linking time. I don't really care about build time, so we can go for the full LTO which will perform optimization
+for all crates used in the project.</p>
+<hr />
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= </span><span style="color:#d08770;">3
+</span><span style="color:#bf616a;">lto </span><span>= &quot;</span><span style="color:#a3be8c;">fat</span><span>&quot;
+</span></code></pre>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>3.0M</strong></li>
+<li><code>cog</code>: <strong>3.8M</strong></li>
+</ul>
+<hr />
+<p>Here we are ! We made some real improvement here. I did not measure compile time yet, but I did not notice a huge 
+difference either.</p>
+<p>Now let us try to switch to <code>opt-level 2</code> again: </p>
+<hr />
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= </span><span style="color:#d08770;">2
+</span><span style="color:#bf616a;">lto </span><span>= &quot;</span><span style="color:#a3be8c;">fat</span><span>&quot;
+</span></code></pre>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>2.9M</strong></li>
+<li><code>cog</code>: <strong>3.7M</strong></li>
+</ul>
+<hr />
+<p>This is even  better, I am going to stick to this and try the next optimization flag. </p>
+<h3 id="codegen-unit">Codegen unit</h3>
+<p>The <code>codegen-units</code> attribute controls how much of the crate will be compiled in parallel. 
+The more codegen units the less compile time will be. To reduce the binaries size we need the smallest possible
+value here: </p>
+<hr />
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= </span><span style="color:#d08770;">2
+</span><span style="color:#bf616a;">lto </span><span>= &quot;</span><span style="color:#a3be8c;">fat</span><span>&quot;
+</span><span style="color:#bf616a;">codegen-units </span><span>= </span><span style="color:#d08770;">1
+</span></code></pre>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>2.6M</strong></li>
+<li><code>cog</code>: <strong>3.6M</strong></li>
+</ul>
+<hr />
+<p>We are getting there. Something puzzled me a bit though, the cargo book state that <em>&quot;No LTO is performed if codegen 
+units is 1 or opt-level is 0.&quot;</em>. That does not seem to be true, I did some test removing <code>lto = &quot;fat&quot;</code> or setting
+<code>codegen-units = 2</code>, in both scenario I ended up with much bigger binaries. I might need to ask on the Rust discord
+channel to understand what is going on here. </p>
+<p>Anyway the binaries are getting smaller. </p>
+<p>Now let's take a look again at the <code>cargo -Z timing</code> report :</p>
+<iframe id="zbuild-no-opt"
+title="Build time report generated by cargo"
+width="100%"
+height="800"
+src="../images/rust_binary_size/cargo-timing-opt-level-2-lto-fat-codegen-1.html">
+</iframe>
+<p>As you can see the build is already about 5 seconds longer than it was without any optimization. </p>
+<p>I can live with that ! </p>
+<h3 id="don-t-panic-abort">Don't panic, abort</h3>
+<p>Cargo allow you to completely disable stack unwinding and simply abort on panic. 
+If you are not familiar with the concept of stack unwinding you could probably read 
+<a href="https://lucumr.pocoo.org/2014/10/30/dont-panic/">this blog post</a> by Armin Ronacher. </p>
+<p>Disabling panic is probably not something I should do but since we are experimenting here, 
+let's be greedy and go all the way down ! </p>
+<hr />
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= </span><span style="color:#d08770;">3
+</span><span style="color:#bf616a;">lto </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">codegen-units </span><span>= </span><span style="color:#d08770;">1
+</span><span style="color:#bf616a;">panic </span><span>= &quot;</span><span style="color:#a3be8c;">abort</span><span>&quot;
+</span></code></pre>
+<p>Binaries size:</p>
+<ul>
+<li><code>coco</code>: <strong>2.6M</strong></li>
+<li><code>cog</code>: <strong>3.3M</strong></li>
+</ul>
+<hr />
+<p>We went from a total of <strong>11.8 Megabytes</strong> to <strong>5.9 Megabytes</strong> and all of this without changing a single line of code. 
+It is already quite an improvement but there is more we can do. </p>
+<h2 id="the-duplicate-crate-problem">The duplicate crate problem</h2>
+<p>Cargo is loved by rustaceans and acknowledged to be one of the best package manager out there, if not the best. 
+I think the way cargo handle dependencies has a lot to do with it. I use java at work and even if I have much respect 
+for maven developers, considering the size of the ecosystem and the age of Java, maven<br />
+does not match the predictability simplicity of cargo.</p>
+<p>I started to think about optimizing Cocogitto dependencies because of two things I did before:</p>
+<ol>
+<li>I moved the code responsible for the conventional
+commits parsing to a dedicated crate (<a href="https://crates.io/crates/conventional_commit_parser">conventional_commit_parser</a>).</li>
+<li>I created a fork of the abandoned <a href="https://github.com/cfrancia/spectral">spectral</a> which I used to write fluent 
+assertions in the Cocogitto test harness, It is called <a href="https://github.com/oknozor/speculoos">speculoos</a> (yes like
+the belgian spiced shortcrust biscuit)</li>
+</ol>
+<p>Turns out the parser crate was still using spectral, in the end my dev build contained both the assertion libraries
+which are almost identical but have different names. This was trivial to resolve. I just needed to update the
+parser to use my spectral fork, but I started to wonder: what if I have the dependencies <code>foo = 1.0.0</code> and <code>bar = 2.0.0</code>
+in my project and foo depends on <code>bar = 1.0.0</code> ? </p>
+<p>Well other package manager would fail in such situation, but cargo is clever, too clever I should say !
+Stephen Coakley wrote an <a href="https://stephen%C3%A9coakley.com/2019/04/24/how-rust-solved-dependency-hell">article</a> describing 
+precisely what happen in such situation. To sum up, in cases where cargo is not able to select a unique version for a 
+crate in your project, it will use <a href="https://en.wikipedia.org/wiki/Name_mangling">name mangling</a> to make both versions
+coexist. </p>
+<h3 id="example">Example</h3>
+<p>Let's now create a simple example to see what exactly is happening here and how it will impact our binary size. </p>
+<p>First we create the binary <code>foo</code> and the library <code>bar</code>: </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">~/_Workshop/playground
+</span><span style="color:#bf616a;">❯</span><span> cargo new</span><span style="color:#bf616a;"> --bin</span><span> foo
+</span><span>     </span><span style="color:#bf616a;">Created</span><span> binary (application) `</span><span style="color:#bf616a;">foo</span><span>` package
+</span><span>
+</span><span style="color:#bf616a;">~/_Workshop/playground
+</span><span style="color:#bf616a;">❯</span><span> cargo new</span><span style="color:#bf616a;"> --lib</span><span> bar
+</span><span>     </span><span style="color:#bf616a;">Created</span><span> library `</span><span style="color:#bf616a;">bar</span><span>` package
+</span></code></pre>
+<p>Then let us set the <code>foo</code> dependencies in <code>Cargo.toml</code></p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[dependencies]
+</span><span style="color:#bf616a;">bar </span><span>= { </span><span style="color:#bf616a;">path </span><span>= &quot;</span><span style="color:#a3be8c;">../bar</span><span>&quot; }
+</span><span style="color:#bf616a;">rand </span><span>= &quot;</span><span style="color:#a3be8c;">0.8.4</span><span>&quot;
+</span></code></pre>
+<p>And make <code>bar</code> depend on an older version of <code>rand</code>:</p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[dependencies]
+</span><span style="color:#bf616a;">rand </span><span>= &quot;</span><span style="color:#a3be8c;">0.7.0</span><span>&quot;
+</span></code></pre>
+<p>Now we write a dummy main function in <code>foo</code>: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">use </span><span>rand::Rng;
+</span><span>
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span>() {
+</span><span>    </span><span style="color:#b48ead;">let mut</span><span> rng = rand::thread_rng();
+</span><span>    </span><span style="color:#b48ead;">let</span><span> number: </span><span style="color:#b48ead;">f64 </span><span>= rng.</span><span style="color:#96b5b4;">gen</span><span>();
+</span><span>    println!(&quot;</span><span style="color:#a3be8c;">A random number generated with rand 0.8.4: </span><span style="color:#d08770;">{}</span><span>&quot;, number);
+</span><span>}
+</span></code></pre>
+<p>Nothing too complicated here but there is something interesting, we set the <code>bar</code> as a dependency 
+but did not actually use it. </p>
+<p>To see what is happening here we will need some extra tools: </p>
+<ul>
+<li><a href="https://sr.ht/~jplatte/cargo-depgraph/">cargo-depgraph</a>: Creates dependency graphs for cargo projects using cargo metadata and graphviz.</li>
+<li><a href="https://github.com/RazrFalcon/cargo-bloat">cargo-bloat</a>: Find out what takes most of the space in your executable.</li>
+<li><code>cargo tree</code>: A cargo subcommand that display a tree visualization of a dependency graph. </li>
+</ul>
+<p>We will now get the dependency graph for <code>foo</code>: </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">foo</span><span> on master 📦 v0.1.0 via ⚙️ v1.55.0 
+</span><span style="color:#bf616a;">❯</span><span> cargo depgraph | </span><span style="color:#bf616a;">dot -Tpng </span><span>&gt; graph.png
+</span></code></pre>
+<p>As you can see below, we have two distinct versions of <code>rand</code> coexisting in the crate.
+It's even worse than it seemed at first: those dependencies bring their own duplicate dependencies.</p>
+<p><img src="https://oknozor.github.io/blog/optimize-rust-binary-size/../images/rust_binary_size/graph_bar_not_used.png" alt="dependency_graph" /></p>
+<p>Now let us run <code>cargo-bloat</code> and see what happens: </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">foo</span><span> on master 📦 v0.1.0 via ⚙️ v1.55.0 
+</span><span style="color:#bf616a;">❯</span><span> cargo bloat</span><span style="color:#bf616a;"> --crates --release 
+</span><span>   </span><span style="color:#bf616a;">Compiling</span><span> bar v0.1.0 (/home/okno/_Workshop/playground/bar)
+</span><span>   </span><span style="color:#bf616a;">Compiling</span><span> foo v0.1.0 (/home/okno/_Workshop/playground/foo)
+</span><span>    </span><span style="color:#bf616a;">Finished</span><span> release </span><span style="color:#b48ead;">[</span><span>optimized</span><span style="color:#b48ead;">]</span><span> target(s) </span><span style="color:#bf616a;">in</span><span> 0.47s
+</span><span>    </span><span style="color:#bf616a;">Analyzing</span><span> target/release/foo
+</span><span>
+</span><span style="color:#bf616a;">File</span><span>  .text     Size Crate
+</span><span style="color:#bf616a;">6.0</span><span>%  92.2% 204.5KiB std
+</span><span style="color:#bf616a;">0.3</span><span>%   4.0%   8.9KiB rand_chacha
+</span><span style="color:#bf616a;">0.1</span><span>%   0.9%   2.0KiB getrandom
+</span><span style="color:#bf616a;">0.0</span><span>%   0.7%   1.6KiB rand
+</span><span style="color:#bf616a;">0.0</span><span>%   0.1%     230B </span><span style="color:#b48ead;">[</span><span>Unknown</span><span style="color:#b48ead;">]
+</span><span style="color:#bf616a;">0.0</span><span>%   0.1%     219B rand_core
+</span><span style="color:#bf616a;">0.0</span><span>%   0.1%     185B foo
+</span><span style="color:#bf616a;">0.0</span><span>%   0.0%      68B ppv_lite86
+</span><span style="color:#bf616a;">6.5</span><span>% 100.0% 221.9KiB .text section size, the file size is 3.3MiB
+</span><span>
+</span><span style="color:#bf616a;">Note:</span><span> numbers above are a result of guesswork. They are not 100% correct and never will be.
+</span></code></pre>
+<p>This is strange, we cannot see the duplication here, maybe <code>cargo-bloat</code> does not take name mangling into account
+and merge the size of both rand versions in one line ? </p>
+<p>Let's try something different. We will actually add some code to <code>bar</code> and call it in <code>foo</code>: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">use </span><span>rand::Rng;
+</span><span>
+</span><span style="color:#65737e;">/// Function in `bar`
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">random_f64</span><span>() -&gt; </span><span style="color:#b48ead;">f64 </span><span>{
+</span><span>    </span><span style="color:#b48ead;">let mut</span><span> rng = rand::thread_rng();
+</span><span>    rng.</span><span style="color:#96b5b4;">gen</span><span>()
+</span><span>}
+</span></code></pre>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">use </span><span>rand::Rng;
+</span><span>
+</span><span style="color:#65737e;">// Foo&#39;s main function
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span>() {
+</span><span>    </span><span style="color:#b48ead;">let mut</span><span> rng = rand::thread_rng();
+</span><span>    </span><span style="color:#b48ead;">let</span><span> number: </span><span style="color:#b48ead;">f64 </span><span>= rng.</span><span style="color:#96b5b4;">gen</span><span>();
+</span><span>    println!(&quot;</span><span style="color:#a3be8c;">A random number generated with rand 0.8.4: </span><span style="color:#d08770;">{}</span><span>&quot;, number);
+</span><span>
+</span><span>    </span><span style="color:#65737e;">// Call to the `bar` crate
+</span><span>    </span><span style="color:#b48ead;">let</span><span> number_from_bar = bar::random_f64();
+</span><span>    println!(&quot;</span><span style="color:#a3be8c;">A random number generated with rand 0.7.0: </span><span style="color:#d08770;">{}</span><span>&quot;, number_from_bar);
+</span><span>}
+</span></code></pre>
+<p>Okay now <code>foo</code> actually uses bar, let us run <code>cargo-bloat</code> again: </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">foo</span><span> on master 📦 v0.1.0 via ⚙️ v1.55.0 
+</span><span style="color:#bf616a;">❯</span><span> cargo bloat</span><span style="color:#bf616a;"> --crates --release 
+</span><span>   </span><span style="color:#bf616a;">Compiling</span><span> foo v0.1.0 (/home/okno/_Workshop/playground/foo)
+</span><span>    </span><span style="color:#bf616a;">Finished</span><span> release </span><span style="color:#b48ead;">[</span><span>optimized</span><span style="color:#b48ead;">]</span><span> target(s) </span><span style="color:#bf616a;">in</span><span> 0.33s
+</span><span>    </span><span style="color:#bf616a;">Analyzing</span><span> target/release/foo
+</span><span>
+</span><span style="color:#bf616a;">File</span><span>  .text     Size Crate
+</span><span style="color:#bf616a;">6.0</span><span>%  87.0% 204.7KiB std
+</span><span style="color:#bf616a;">0.5</span><span>%   7.5%  17.8KiB rand_chacha
+</span><span style="color:#bf616a;">0.1</span><span>%   1.9%   4.4KiB getrandom
+</span><span style="color:#bf616a;">0.1</span><span>%   1.0%   2.4KiB rand
+</span><span style="color:#bf616a;">0.0</span><span>%   0.2%     551B bar
+</span><span style="color:#bf616a;">0.0</span><span>%   0.2%     438B rand_core
+</span><span style="color:#bf616a;">0.0</span><span>%   0.1%     273B foo
+</span><span style="color:#bf616a;">0.0</span><span>%   0.1%     230B </span><span style="color:#b48ead;">[</span><span>Unknown</span><span style="color:#b48ead;">]
+</span><span style="color:#bf616a;">0.0</span><span>%   0.0%      68B ppv_lite86
+</span><span style="color:#bf616a;">6.9</span><span>% 100.0% 235.3KiB .text section size, the file size is 3.3MiB
+</span><span>
+</span><span style="color:#bf616a;">Note:</span><span> numbers above are a result of guesswork. They are not 100% correct and never will be.
+</span></code></pre>
+<p>Did you notice what happened ? </p>
+<p>When we were not using code from <code>bar</code>, <code>rand_chacha</code> took 8.9 KiB and about 4.0% of the total binary size. 
+Now that we call the code it takes 17.8 KiB, 7.5% of the binary size. My guess is that rustc does not include
+unused dependencies in the final binary.</p>
+<p>Our first assumption was partially true: </p>
+<ul>
+<li><code>cargo-bloat</code> does not take name mangling into account and merge the size of both rand versions, correct.</li>
+<li>But our first binary  did not include both <code>rand</code> version because <code>bar -&gt; rand 0.7.0</code> was not used. </li>
+</ul>
+<p>Now that we have successfully bloated our crate with two version of <code>rand</code> how do we solve this ? 
+The most obvious solution is to manually set <code>foo</code> and <code>bar</code> <code>rand</code> version to <code>0.8.4</code>. 
+This, of course works, but is not the most efficient. On a real life application with a dozen of dependencies we might have
+multiple crates needing the same dependencies, this would work only partially.
+Except for <code>rand</code>, I own all the crates here. In a real life scenario I would not be able to select
+what version of a particular sub-dependency will be needed. </p>
+<p>Cargo like composer and other package managers uses the semver specification to select dependencies. 
+This is our way out: SemVer defines a set of requirement that can be applied to a dependencies, these can be found 
+on the <a href="https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html">cargo reference</a>. </p>
+<p>Let's try to change the <code>foo</code> dependencies, so cargo picks the same <code>rand</code> version as bar:</p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[dependencies]
+</span><span style="color:#bf616a;">bar </span><span>= { </span><span style="color:#bf616a;">path </span><span>= &quot;</span><span style="color:#a3be8c;">../bar</span><span>&quot; }
+</span><span style="color:#bf616a;">rand </span><span>= &quot;</span><span style="color:#a3be8c;">^0.7</span><span>&quot; </span><span style="color:#65737e;"># caret requirement: &gt;=0.7.0, &lt;0.8.0
+</span></code></pre>
+<p>Let us create a new dependency graph: </p>
+<p><img src="https://oknozor.github.io/blog/optimize-rust-binary-size/../images/rust_binary_size/graph-fixed.png" alt="graph_dependency_fixed" /></p>
+<p>Hooray it is fixed !</p>
+<p>We will try to apply this knowledge to a real life (part-time/hobby) project.</p>
+<h2 id="removing-cocogitto-s-duplicates">Removing cocogitto's duplicates</h2>
+<p>Back to our project: this is not a foo/bar hello world example, and I am not sure if we will be able to apply what we just 
+learned. Well, nothing ventured, nothing gained!</p>
+<p>Here are the current dependencies and profile optimizations set in <code>Cargo.toml</code> : </p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[profile.release]
+</span><span style="color:#bf616a;">opt-level </span><span>= </span><span style="color:#d08770;">2
+</span><span style="color:#bf616a;">lto </span><span>= &quot;</span><span style="color:#a3be8c;">fat</span><span>&quot;
+</span><span style="color:#bf616a;">codegen-units </span><span>= </span><span style="color:#d08770;">1
+</span><span style="color:#bf616a;">panic </span><span>= &quot;</span><span style="color:#a3be8c;">abort</span><span>&quot;
+</span><span>
+</span><span>[dependencies]
+</span><span style="color:#bf616a;">git2 </span><span>= { </span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;, </span><span style="color:#bf616a;">default-features </span><span>= </span><span style="color:#d08770;">false</span><span>, </span><span style="color:#bf616a;">features </span><span>= [] }
+</span><span style="color:#bf616a;">anyhow </span><span>= &quot;</span><span style="color:#a3be8c;">^1</span><span>&quot;
+</span><span style="color:#bf616a;">colored </span><span>= &quot;</span><span style="color:#a3be8c;">^2</span><span>&quot;
+</span><span style="color:#bf616a;">chrono </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;
+</span><span style="color:#bf616a;">config </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;
+</span><span style="color:#bf616a;">itertools </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;
+</span><span style="color:#bf616a;">serde_derive </span><span>= &quot;</span><span style="color:#a3be8c;">^1</span><span>&quot;
+</span><span style="color:#bf616a;">serde </span><span>= &quot;</span><span style="color:#a3be8c;">^1</span><span>&quot;
+</span><span style="color:#bf616a;">tempfile </span><span>= &quot;</span><span style="color:#a3be8c;">^3</span><span>&quot;
+</span><span style="color:#bf616a;">semver </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;
+</span><span style="color:#bf616a;">shell-words </span><span>= &quot;</span><span style="color:#a3be8c;">^1</span><span>&quot;
+</span><span style="color:#bf616a;">which </span><span>= &quot;</span><span style="color:#a3be8c;">^4</span><span>&quot;
+</span><span style="color:#bf616a;">lazy_static </span><span>= &quot;</span><span style="color:#a3be8c;">^1</span><span>&quot;
+</span><span style="color:#bf616a;">toml </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;
+</span><span style="color:#bf616a;">structopt </span><span>= { </span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;, </span><span style="color:#bf616a;">optional </span><span>= </span><span style="color:#d08770;">true </span><span>}
+</span><span style="color:#bf616a;">conventional_commit_parser </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;
+</span><span>
+</span><span>[dev-dependencies]
+</span><span style="color:#bf616a;">assert_cmd </span><span>= &quot;</span><span style="color:#a3be8c;">1.0.3</span><span>&quot;
+</span><span style="color:#bf616a;">predicates </span><span>= &quot;</span><span style="color:#a3be8c;">1</span><span>&quot;
+</span><span style="color:#bf616a;">rand </span><span>= &quot;</span><span style="color:#a3be8c;">0.7.3</span><span>&quot;
+</span><span style="color:#bf616a;">indoc </span><span>= &quot;</span><span style="color:#a3be8c;">1.0.3</span><span>&quot;
+</span><span style="color:#bf616a;">speculoos </span><span>= &quot;</span><span style="color:#a3be8c;">0.7.0</span><span>&quot;
+</span></code></pre>
+<p>Now let us inspect duplicate crates : </p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>❯ cargo tree --duplicates 
+</span><span>getrandom v0.1.16
+</span><span>├── rand v0.7.3
+</span><span>│   [dev-dependencies]
+</span><span>│   └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>└── rand_core v0.5.1
+</span><span>    ├── rand v0.7.3 (*)
+</span><span>    └── rand_chacha v0.2.2
+</span><span>        └── rand v0.7.3 (*)
+</span><span>
+</span><span>getrandom v0.2.3
+</span><span>└── rand_core v0.6.3
+</span><span>    ├── rand v0.8.4
+</span><span>    │   └── tempfile v3.2.0
+</span><span>    │       └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>    └── rand_chacha v0.3.1
+</span><span>        └── rand v0.8.4 (*)
+</span><span>
+</span><span>num-traits v0.1.43
+</span><span>└── serde-hjson v0.9.1
+</span><span>    └── config v0.11.0
+</span><span>        └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>
+</span><span>num-traits v0.2.14
+</span><span>├── chrono v0.4.19
+</span><span>│   └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>├── float-cmp v0.8.0
+</span><span>│   └── predicates v1.0.8
+</span><span>│       [dev-dependencies]
+</span><span>│       └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>├── num v0.1.42
+</span><span>│   └── speculoos v0.7.0
+</span><span>│       [dev-dependencies]
+</span><span>│       └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>├── num-bigint v0.1.44
+</span><span>│   ├── num v0.1.42 (*)
+</span><span>│   └── num-rational v0.1.42
+</span><span>│       └── num v0.1.42 (*)
+</span><span>├── num-complex v0.1.43
+</span><span>│   └── num v0.1.42 (*)
+</span><span>├── num-integer v0.1.44
+</span><span>│   ├── chrono v0.4.19 (*)
+</span><span>│   ├── num v0.1.42 (*)
+</span><span>│   ├── num-bigint v0.1.44 (*)
+</span><span>│   ├── num-iter v0.1.42
+</span><span>│   │   └── num v0.1.42 (*)
+</span><span>│   └── num-rational v0.1.42 (*)
+</span><span>├── num-iter v0.1.42 (*)
+</span><span>├── num-rational v0.1.42 (*)
+</span><span>└── num-traits v0.1.43 (*)
+</span><span>
+</span><span>predicates v1.0.8 (*)
+</span><span>
+</span><span>predicates v2.0.2
+</span><span>└── assert_cmd v1.0.8
+</span><span>    [dev-dependencies]
+</span><span>    └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>
+</span><span>rand v0.4.6
+</span><span>└── num-bigint v0.1.44 (*)
+</span><span>
+</span><span>rand v0.7.3 (*)
+</span><span>
+</span><span>rand v0.8.4 (*)
+</span><span>
+</span><span>rand_chacha v0.2.2 (*)
+</span><span>
+</span><span>rand_chacha v0.3.1 (*)
+</span><span>
+</span><span>rand_core v0.5.1 (*)
+</span><span>
+</span><span>rand_core v0.6.3 (*)
+</span><span>
+</span><span>serde v0.8.23
+</span><span>└── serde-hjson v0.9.1 (*)
+</span><span>
+</span><span>serde v1.0.130
+</span><span>├── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>├── config v0.11.0 (*)
+</span><span>├── serde_json v1.0.67
+</span><span>│   └── config v0.11.0 (*)
+</span><span>└── toml v0.5.8
+</span><span>    ├── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>    └── config v0.11.0 (*)
+</span></code></pre>
+<p>Damn it! I expected some duplications but this is a lot. Multiple versions of <code>serde</code>, <code>num-traits</code>, and <code>rand</code>... </p>
+<p>How to we solve this ? </p>
+<p>Let's not dive into tweaking the SemVer caret requirements, there is something we need to pay attention to : 
+Some listed duplicates have the <code>[dev-dependencies]</code> profile. Actually having duplicates in our test/dev build is not
+such a big deal.</p>
+<p><code>cargo tree</code> will have those filtered out :</p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>❯ cargo tree --duplicates -e=no-dev            
+</span><span>num-traits v0.1.43
+</span><span>└── serde-hjson v0.9.1
+</span><span>    └── config v0.11.0
+</span><span>        └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>
+</span><span>num-traits v0.2.14
+</span><span>├── chrono v0.4.19
+</span><span>│   └── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>├── num-integer v0.1.44
+</span><span>│   └── chrono v0.4.19 (*)
+</span><span>└── num-traits v0.1.43 (*)
+</span><span>
+</span><span>serde v0.8.23
+</span><span>└── serde-hjson v0.9.1 (*)
+</span><span>
+</span><span>serde v1.0.130
+</span><span>├── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>├── config v0.11.0 (*)
+</span><span>├── serde_json v1.0.67
+</span><span>│   └── config v0.11.0 (*)
+</span><span>└── toml v0.5.8
+</span><span>    ├── cocogitto v3.0.0 (/home/okno/_Workshop/MyRepos/cocogitto)
+</span><span>    └── config v0.11.0 (*)
+</span></code></pre>
+<p>It is not perfect but much better already. There is one more thing we can check before trying the SemVer approach.</p>
+<p>The first obvious issue I see here is <code>config 0.11.0</code> needing <code>serde-hjson</code> sub-crates which brings an older version
+of <code>serde</code> in scope. I have no idea what <code>serde-hjson</code> is. I might not need that at all. </p>
+<p>Remember <code>cargo depgraph</code> ? We will take a look at it outputs before going further: </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cargo</span><span> depgraph</span><span style="color:#bf616a;"> --build-deps </span><span>| </span><span style="color:#bf616a;">dot -Tpng </span><span>&gt; graph.png
+</span></code></pre>
+<iframe id="zbuild-no-opt"
+title="cocogitto dependency graph"
+width="100%"
+height="300"
+src="../images/rust_binary_size/graph-cocogitto.png">
+</iframe>
+<p>Well this is not pretty, but this is useful. The <a href="https://lib.rs/crates/cargo-depgraph">cargo-depgraph documentation</a> 
+states the following : <em>&quot;dotted lines = optional dependency (could be removed by disabling a cargo feature)&quot;</em>, <code>serde-hjson</code> is one of them.</p>
+<p>The default <code>config</code> features are the following : <code>toml</code>, <code>json</code>, <code>yaml</code>, <code>hjson</code>, <code>ini</code>. Cocogitto configurations files
+are made of Toml only. Let us disable those and see how it goes : </p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span style="color:#bf616a;">config </span><span>= { </span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">^0</span><span>&quot;, </span><span style="color:#bf616a;">default-features </span><span>= </span><span style="color:#d08770;">false</span><span>, </span><span style="color:#bf616a;">features </span><span>= [&quot;</span><span style="color:#a3be8c;">toml</span><span>&quot;] }
+</span></code></pre>
+<p>And run <code>cargo tree</code> again : </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cargo</span><span> tree</span><span style="color:#bf616a;"> -d -e</span><span> no-dev
+</span></code></pre>
+<p>No need to tweak SemVer requirement anymore, we cracked the case already ! </p>
+<p>How did this affect our final binaries size ? </p>
+<ul>
+<li><code>coco</code>: <strong>2.3M</strong></li>
+<li><code>cog</code>: <strong>3.1M</strong></li>
+</ul>
+<p>Heck yeah, still improving !</p>
+<p>I will not go through all dependencies features we can remove here. 
+We got a solid grasp at how this should be done. </p>
+<h3 id="scraping-the-last-bytes-away">Scraping the last bytes away</h3>
+<p>I am not too comfortable with this, but if you want to carve out all possible bytes out of your Rust binary 
+you can use the unix program <code>strip</code>. <code>strip</code> remove symbols from the final 
+binary/<a href="https://en.wikipedia.org/wiki/Object_file">objectfile</a>.</p>
+<p>According to wikipedia <em>objectfile</em> symbols are <em>&quot;metadata used for linking or debugging, including: information to resolve
+symbolic cross-references between different modules, relocation information, stack unwinding information, comments,
+program symbols, debugging or profiling information. Other metadata may include the date and time of compilation,
+the compiler name and version, and other identifying information.&quot;</em></p>
+<p>Cargo has a <code>debug</code> attribute, which removes debugs symbols from the target binary, just like <code>strip</code>. 
+I did not mention it before because I obtained no significant result using this attribute. My guess is
+that rustc always keeps the debugs symbols of the standard library.</p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>strip -S cog
+</span><span>strip -S coco
+</span></code></pre>
+<p>After stripping, the naked binaries size are <strong>1.5M</strong> for <code>cog</code>, and <strong>1.1M</strong> for <code>coco</code>. </p>
+<p>I usually do not use emojis but 😲! </p>
+<h2 id="summary">Summary</h2>
+<p>We went through the following techniques to reduce our binaries size : </p>
+<ul>
+<li>Tweak cargo release profile.</li>
+<li>Remove duplicated crates with SemVer requirement.</li>
+<li>Remove unused or duplicated crates with cargo dependency features. </li>
+<li>Remove <em>objectfile</em> metadata with <code>strip</code>.</li>
+</ul>
+<p>We reduced the total size of our two binaries from 11.8 Megabytes to 2.6 Megabytes. This is a huge improvement but
+keep in mind that we generally don't want to do this at all cost.
+Removing panic unwind or increasing build time drastically might not be worth a couple megabytes. 
+Modern hard drives have more than enough memory to handle your big fat binary and network is fast. 
+That said, when it is possible, removing duplicate dependencies is always worth it.</p>
+<hr />
+<p><strong>Useful tools :</strong>
+<a href="https://github.com/RazrFalcon/cargo-bloat">cargo-bloat</a>
+<a href="https://doc.rust-lang.org/cargo/commands/cargo-tree.html">cargo-tree</a>
+<a href="https://github.com/m-cat/cargo-deps">cargo-deps</a></p>
+<p><strong>References :</strong></p>
+<ul>
+<li><a href="https://blog.rust-lang.org/2016/05/05/cargo-pillars.html">Predictable dependency management</a></li>
+<li><a href="https://arusahni.net/blog/2020/03/optimizing-rust-binary-size.html">optimizing-rust-binary-size</a></li>
+<li><a href="https://nnethercote.github.io/perf-book/build-configuration.html?highlight=lto#link-time-optimization">The rust performance book</a></li>
+<li><a href="https://lucumr.pocoo.org/2014/10/30/dont-panic/">Don't panic</a></li>
+<li><a href="https://doc.rust-lang.org/cargo/reference/profiles.html">the cargo reference - profiles</a></li>
+<li><a href="https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#caret-requirements">the cargo reference - specifying-dependencies</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Name_mangling">name mangling</a></li>
+<li><a href="https://nnethercote.github.io/perf-book/build-configuration.html">reddit/noob_question_why_are_rust_binaries_so_big</a></li>
+</ul>
+
+</div>
+
+        </div>
+
+    </body>
+
+</html>

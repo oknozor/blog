@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+      <!-- Enable responsiveness on mobile devices-->
+      <!-- viewport-fit=cover is to support iPhone X rounded corners and notch in landscape-->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+
+      <title>Okno&#x27;s blog</title>
+
+      <!-- CSS -->
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/print.css" media="print">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/poole.css">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/hyde.css">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+      
+
+      
+      
+    </head>
+
+    <body class="theme-base-0d ">
+        
+            <div class="sidebar">
+                <div class="container sidebar-sticky">
+                    <div class="sidebar-about">
+                        
+                            <a href="https:&#x2F;&#x2F;oknozor.github.io&#x2F;blog"><h1>Okno&#x27;s blog</h1></a>
+                            
+                            <p class="lead">Hello, I am Paul Delafosse AKA Okno, Java software developer by day
+Rustacean by night. 
+</p>
+                            
+                        
+                    </div>
+
+                    <ul class="sidebar-nav">
+                        
+                        
+                        
+                    </ul>
+                </div>
+            </div>
+        
+
+        <div class="content container">
+            
+<div class="post">
+  <h1 class="post-title">Writing a stackoverflow plugin for pop-launcher</h1>
+  <span class="post-date">2022-06-09</span>
+  <h2 id="introduction">Introduction</h2>
+<p>In this tutorial we will build a pop-launcher plugin to search Stackoverflow  posts from your favorite
+launcher. What is pop-launcher you may wonder ? Well let's take a look at the readme on the <a href="https://github.com/pop-os/launcher">pop-launcher repository</a>.</p>
+<blockquote>
+<p>Modular IPC-based desktop launcher service, written in Rust. Desktop launchers may interface with this service via 
+spawning the pop-launcher process and communicating to it via JSON IPC over the stdin and stdout pipes. The launcher 
+service will also spawn plugins found in plugin directories on demand, based on the queries sent to the service.</p>
+</blockquote>
+<p>In short pop-launcher is a small protocol sending Json entries for an application launcher over stdout and receiving 
+user queries over stdin. The general idea is to provide a common backend for application launchers that implement the protocol. </p>
+<p>As far as I know, there are only three frontend implementation out there: </p>
+<ul>
+<li><a href="https://github.com/pop-os/shell">pop-shell</a>: the PopOs, keyboard-driven tiling window manager layer.</li>
+<li><a href="https://github.com/pop-os/cosmic-launcher">cosmic-launcher</a>: a gtk front-end for pop-launcher.</li>
+<li><a href="https://github.com/oknozor/onagre">Onagre</a>: a general purpose application launcher for X and wayland.</li>
+</ul>
+<p>Throughout this tutorial I am going to use Onagre to test the plugin and provide example screenshots. There is a good 
+reason for this, I am the author of Onagre so I am quite familiar with it. Also, the secret goal of this article is to trick
+you into installing Onagre.</p>
+<h2 id="pop-launcher-plugins">Pop-launcher plugins</h2>
+<p>If you are familiar with other linux application launcher such as rofi and wofi you might be used to write
+shell scripts to extend the launcher capabilities. A very basic example would be to write a script using the <code>find</code>
+command to search and list files using rofi. It's quite simple actually: the script takes the rofi user input as arguments
+and rofi display the script output. Dead simple and quite efficient. </p>
+<p>While the pop-launcher approach resemble the rofi one, it imposes a common interface for plugin implementors which 
+make the plugins easy to write and guarantee it would work regardless of the which frontend is used.
+Additionally, pop-launcher provides a unified configuration format, which give the information to the frontend on how to 
+use the plugin: should it keep a history, what icon should be displayed, when should the plugin be activated etc.</p>
+<p>This small set of constraint makes it really easy to write pop-launcher plugins that works just the same on any frontend
+implementation. I strongly believe it as the potential to grow a wide ecosystem, something comparable to 
+<a href="https://www.alfredapp.com/">Alfred</a> on macOS. If you don't know what I am talking about, take a look at 
+<a href="https://github.com/learn-anything/alfred-workflows">this list</a>. </p>
+<p>Before diving into the plugin implementation here is a small demo of pop-launcher capabilities:</p>
+<video controls="controls" style="display: block; margin-left: auto; margin-right: auto; width: 80%;">
+<source src="../video/onagre-demo.mp4" type="video/mp4">
+</video>
+<h2 id="what-are-we-going-to-build">What are we going to build</h2>
+<p>It would be nice to have something we could actually use at the end of the tutorial so let's build a stackoverflow plugin. 
+Every year in the stackoverflow survey, Rust rates as the most loved language so let's give some love back to stackoverflow. 
+Joke aside, even if you could write a plugin in any language 
+(for instance I use the <a href="https://github.com/pbui/pop-launcher-scripts">pass plugin</a> written in Python), pop-launcher being
+written in Rust, it also provides some interfaces doing the heavy lifting for us. </p>
+<p>Let us sum up, we will build a plugin to browse stackoverflow posts, using rust. </p>
+<p><strong>Requirements:</strong></p>
+<p>Before getting started make sure you have the following installed:</p>
+<ul>
+<li><a href="https://www.rust-lang.org/tools/install">rust</a>.</li>
+<li>IDE integration for rust, either <a href="https://www.jetbrains.com/rust/">intellij-rust</a> or <a href="https://rust-analyzer.github.io/">rust-analyzer</a>.</li>
+<li><a href="https://github.com/pop-os/launcher">pop-launcher</a>.</li>
+</ul>
+<h2 id="getting-started">Getting started</h2>
+<p>Alright you are all setup ? First let's create a new rust project with <code>cargo</code>: </p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>❯ cargo new pop-launcher-stackoverflow
+</span><span>     Created binary (application) `pop-launcher-stackoverflow` package
+</span></code></pre>
+<p>You can then open it in your editor of choice and add the following dependencies to <code>Cargo.toml</code>: </p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[dependencies]
+</span><span style="color:#bf616a;">pop-launcher-toolkit </span><span>= { </span><span style="color:#bf616a;">git </span><span>= &quot;</span><span style="color:#a3be8c;">https://github.com/pop-os/launcher</span><span>&quot; }
+</span><span style="color:#bf616a;">tokio </span><span>= { </span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">1.18.2</span><span>&quot;, </span><span style="color:#bf616a;">features </span><span>= [&quot;</span><span style="color:#a3be8c;">rt</span><span>&quot;] }
+</span><span style="color:#bf616a;">ureq </span><span>= { </span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">2.4.0</span><span>&quot;, </span><span style="color:#bf616a;">features </span><span>= [&quot;</span><span style="color:#a3be8c;">json</span><span>&quot;] }
+</span><span style="color:#bf616a;">serde </span><span>= { </span><span style="color:#bf616a;">version </span><span>= &quot;</span><span style="color:#a3be8c;">^1</span><span>&quot;, </span><span style="color:#bf616a;">features </span><span>= [&quot;</span><span style="color:#a3be8c;">derive</span><span>&quot;] }
+</span><span style="color:#bf616a;">anyhow </span><span>= &quot;</span><span style="color:#a3be8c;">1.0.57</span><span>&quot;
+</span></code></pre>
+<p>Let me pause here and explain the above dependencies: </p>
+<ul>
+<li><code>pop-launcher-toolkit</code>:
+We need it to use the provided plugin interface, this is not mandatory, 
+but it will greatly ease the implementation. First it will take care of IPC message passing and serealization for us, 
+handle the log format and brings all the pop-launcher messages structures in scope. </li>
+<li><code>tokio</code>: internally pop-launcher uses the tokio runtime, so we need our plugin to start the runtime with the <code>#[tokio::main]</code>
+macro, provided by the <code>rt</code> feature.</li>
+<li><code>ureq</code>: we are going to make some http requests to stackoverflow.</li>
+<li><code>serde</code>: to deserialize the stackoverflow http responses.</li>
+</ul>
+<h3 id="the-stackoverflow-api">The Stackoverflow API</h3>
+<p>Before going further, let's take a look at an example response from the 
+<a href="https://api.stackexchange.com/docs/search#page=2&amp;pagesize=8&amp;order=desc&amp;sort=votes&amp;intitle=springboot&amp;filter=default&amp;site=stackoverflow&amp;run=true">stackoverflow REST API</a>:</p>
+<pre data-lang="json" style="background-color:#2b303b;color:#c0c5ce;" class="language-json "><code class="language-json" data-lang="json"><span>{
+</span><span>      &quot;</span><span style="color:#a3be8c;">tags</span><span>&quot;: [
+</span><span>        &quot;</span><span style="color:#a3be8c;">java</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">maven</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">spring-boot</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">manifest</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">spring-boot-maven-plugin</span><span>&quot;
+</span><span>      ],
+</span><span>      &quot;</span><span style="color:#a3be8c;">owner</span><span>&quot;: {
+</span><span>        &quot;</span><span style="color:#a3be8c;">account_id</span><span>&quot;: </span><span style="color:#d08770;">5457896</span><span>,
+</span><span>        &quot;</span><span style="color:#a3be8c;">reputation</span><span>&quot;: </span><span style="color:#d08770;">2754</span><span>,
+</span><span>        &quot;</span><span style="color:#a3be8c;">user_id</span><span>&quot;: </span><span style="color:#d08770;">4340793</span><span>,
+</span><span>        &quot;</span><span style="color:#a3be8c;">user_type</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">registered</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">accept_rate</span><span>&quot;: </span><span style="color:#d08770;">61</span><span>,
+</span><span>        &quot;</span><span style="color:#a3be8c;">profile_image</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">https://www.gravatar.com/avatar/6c078df4144343cdad824bb4637b807d?s=256&amp;d=identicon&amp;r=PG&amp;f=1</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">display_name</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">JeyJ</span><span>&quot;,
+</span><span>        &quot;</span><span style="color:#a3be8c;">link</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">https://stackoverflow.com/users/4340793/jeyj</span><span>&quot;
+</span><span>      },
+</span><span>      &quot;</span><span style="color:#a3be8c;">is_answered</span><span>&quot;: </span><span style="color:#d08770;">true</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">view_count</span><span>&quot;: </span><span style="color:#d08770;">79174</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">accepted_answer_id</span><span>&quot;: </span><span style="color:#d08770;">54867850</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">answer_count</span><span>&quot;: </span><span style="color:#d08770;">7</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">score</span><span>&quot;: </span><span style="color:#d08770;">61</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">last_activity_date</span><span>&quot;: </span><span style="color:#d08770;">1647362781</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">creation_date</span><span>&quot;: </span><span style="color:#d08770;">1551101209</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">last_edit_date</span><span>&quot;: </span><span style="color:#d08770;">1647292833</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">question_id</span><span>&quot;: </span><span style="color:#d08770;">54867295</span><span>,
+</span><span>      &quot;</span><span style="color:#a3be8c;">content_license</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">CC BY-SA 4.0</span><span>&quot;,
+</span><span>      &quot;</span><span style="color:#a3be8c;">link</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">https://stackoverflow.com/questions/54867295/springboot-no-main-manifest-attribute-maven</span><span>&quot;,
+</span><span>      &quot;</span><span style="color:#a3be8c;">title</span><span>&quot;: &quot;</span><span style="color:#a3be8c;">SpringBoot no main manifest attribute (maven)</span><span>&quot;
+</span><span>    }
+</span></code></pre>
+<p>To keep things simple we are only going to display the post title its score and the link. </p>
+<p>Let's write the structs for deserialization: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">derive</span><span>(Deserialize, Debug, PartialEq)]
+</span><span style="color:#b48ead;">struct </span><span>StackOverFlowResponse {
+</span><span>  </span><span style="color:#bf616a;">items</span><span>: Vec&lt;StackOverFlowPost&gt;,
+</span><span>}
+</span><span>
+</span><span>#[</span><span style="color:#bf616a;">derive</span><span>(Deserialize, Debug)]
+</span><span style="color:#b48ead;">struct </span><span>StackOverFlowPost {
+</span><span>    </span><span style="color:#bf616a;">title</span><span>: String,
+</span><span>    </span><span style="color:#bf616a;">score</span><span>: </span><span style="color:#b48ead;">i32</span><span>,
+</span><span>    </span><span style="color:#bf616a;">link</span><span>: String,
+</span><span>}
+</span></code></pre>
+<h3 id="querying-stackoverflow-from-rust">Querying Stackoverflow from rust</h3>
+<p>Now that we have the datastructures to hold the API response we can query it using the <code>ureq</code> crate.</p>
+<p>Let's approach this using the test driven development process. 
+First we define a <code>search_posts</code> function, taking a string parameter and returning a <code>StackOverFlowResponse</code>. </p>
+<p>Pop-launcher plugins doesn't need fancy error handling, so we are going to wrap the return type within <code>anyhow::Result</code>
+to easily propagate fallible statement with the <code>?</code> operator.</p>
+<p>Finally, we omit the actual implementation and use the <code>todo!()</code> macro as a placeholder.
+This macro is quite useful when using the TDD process, its equivalent to <code>panic!</code> but convey an intent of implementing
+the functionality. </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">search_posts</span><span>(</span><span style="color:#bf616a;">intitle</span><span>: &amp;</span><span style="color:#b48ead;">str</span><span>) -&gt; Result&lt;StackOverFlowResponse&gt; {
+</span><span>  todo!()
+</span><span>}
+</span></code></pre>
+<p>Now that our API is defined let's write a test, pop-launcher currently display a maximum of height search results,
+so we are going to limit our stackoverflow response to that amount of post. </p>
+<p>For readability, we use the <a href="https://crates.io/crates/speculoos">speculoos crate</a> which provides fluent test assertions
+via the <code>assert_that</code> macro. </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">test</span><span>]
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">should_get_posts_from_stackoverflow</span><span>() {
+</span><span>  </span><span style="color:#b48ead;">let</span><span> posts = </span><span style="color:#96b5b4;">search_posts</span><span>(&quot;</span><span style="color:#a3be8c;">spring boot</span><span>&quot;);
+</span><span>
+</span><span>  assert_that!(posts)
+</span><span>          .</span><span style="color:#96b5b4;">is_ok</span><span>()
+</span><span>          .</span><span style="color:#96b5b4;">map</span><span>(|</span><span style="color:#bf616a;">response</span><span>| &amp;response.items)
+</span><span>          .</span><span style="color:#96b5b4;">has_length</span><span>(</span><span style="color:#d08770;">8</span><span>);
+</span><span>}
+</span></code></pre>
+<p>We can now run our test with <code>cargo test</code>, it should fail with the following output:</p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>---- test::should_get_posts_from_stackoverflow stdout ----
+</span><span>thread &#39;test::should_get_posts_from_stackoverflow&#39; panicked at &#39;not yet implemented&#39;, src/main.rs:17:1
+</span><span>note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+</span></code></pre>
+<p>We can now implement the http call, calling <code>ureq::get</code>, passing the query parameter and calling the endpoint. 
+finally we need to convert our result to <code>anyhow::Result</code>.</p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">search_posts</span><span>(</span><span style="color:#bf616a;">intitle</span><span>: &amp;</span><span style="color:#b48ead;">str</span><span>) -&gt; Result&lt;StackOverFlowResponse&gt; {
+</span><span>  </span><span style="color:#b48ead;">let</span><span> response = ureq::get(&quot;</span><span style="color:#a3be8c;">https://api.stackexchange.com/2.3/search?</span><span>&quot;)
+</span><span>          .</span><span style="color:#96b5b4;">query</span><span>(&quot;</span><span style="color:#a3be8c;">page</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">1</span><span>&quot;)
+</span><span>          .</span><span style="color:#96b5b4;">query</span><span>(&quot;</span><span style="color:#a3be8c;">pagesize</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">8</span><span>&quot;)
+</span><span>          .</span><span style="color:#96b5b4;">query</span><span>(&quot;</span><span style="color:#a3be8c;">order</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">desc</span><span>&quot;)
+</span><span>          .</span><span style="color:#96b5b4;">query</span><span>(&quot;</span><span style="color:#a3be8c;">sort</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">activity</span><span>&quot;)
+</span><span>          .</span><span style="color:#96b5b4;">query</span><span>(&quot;</span><span style="color:#a3be8c;">site</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">stackoverflow</span><span>&quot;)
+</span><span>          .</span><span style="color:#96b5b4;">query</span><span>(&quot;</span><span style="color:#a3be8c;">intitle</span><span>&quot;, &amp;format!(&quot;</span><span style="color:#96b5b4;">\&quot;</span><span style="color:#d08770;">{intitle}</span><span style="color:#96b5b4;">\&quot;</span><span>&quot;))
+</span><span>          .</span><span style="color:#96b5b4;">call</span><span>()?;
+</span><span>
+</span><span>  response.</span><span style="color:#96b5b4;">into_json</span><span>().</span><span style="color:#96b5b4;">map_err</span><span>(Into::into)
+</span><span>}
+</span></code></pre>
+<p>Let's run <code>cargo test</code> again : </p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>running 1 test
+</span><span>test test::should_get_posts_from_stackoverflow ... ok
+</span></code></pre>
+<p>Hooray, we have some stackoverflow posts to display! 
+We can now move forward to the plugin implementation. </p>
+<h3 id="the-pluginext-trait">The <code>PluginExt</code> trait</h3>
+<p>Now that we are able to query posts from stackoverflow, we need to store them in a struct that implement 
+the plugin functionalities. Luckily for us the <code>pop-launcher-toolkit</code> crate provides a helper trait
+which comes with default behaviors for our plugin. Default implementation includes logging, and running the plugin.<br />
+All we need to do is to implement the trait and call the <code>run</code> function to fire up our plugin. </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">use </span><span>pop_launcher_toolkit::launcher::Indice;
+</span><span style="color:#b48ead;">use </span><span>pop_launcher_toolkit::plugin_trait::{PluginExt, async_trait};
+</span><span>
+</span><span>#[</span><span style="color:#bf616a;">derive</span><span>(Default)]
+</span><span style="color:#b48ead;">struct </span><span>StackOverflowPlugin {
+</span><span>  </span><span style="color:#bf616a;">items</span><span>: Vec&lt;StackOverFlowPost&gt;,
+</span><span>}
+</span><span>
+</span><span>#[</span><span style="color:#bf616a;">async_trait</span><span>]
+</span><span style="color:#b48ead;">impl </span><span>PluginExt </span><span style="color:#b48ead;">for </span><span>StackOverflowPlugin {
+</span><span>  </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">name</span><span>(&amp;</span><span style="color:#bf616a;">self</span><span>) -&gt; &amp;</span><span style="color:#b48ead;">str </span><span>{
+</span><span>    todo!()
+</span><span>  }
+</span><span>
+</span><span>  async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">search</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">query</span><span>: &amp;</span><span style="color:#b48ead;">str</span><span>) {
+</span><span>    todo!()
+</span><span>  }
+</span><span>
+</span><span>  async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">activate</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">id</span><span>: Indice) {
+</span><span>    todo!()
+</span><span>  }
+</span><span>}
+</span></code></pre>
+<p>Many things are going on here. We declared a <code>StackOverflowPlugin</code> struct, which hold our search results
+and implemented the non default function provided by the <code>PluginExt</code> trait: <code>name</code>, <code>search</code> and <code>activate</code>. 
+This is the bare minimum required to write pop-launcher plugin. The trait exposes other functions that come with a 
+default implementation, we will use some of them later on, but for now let's focus on those three.</p>
+<p>Finally, note that we need to decorate the <code>impl</code> declaration with the <code>#[async_trait]</code> macro. Currently, Rust
+does not allow async functions in traits, the macro attribute bypass this limitation.</p>
+<p>If you want to take a look at the available function run <code>cargo doc --open -p pop-launcher-toolkit</code> to browse 
+the documentation locally. I strongly recommend to do so and take a look at the toolkit and <code>PluginExt</code> 
+trait documentation. This will come in handy later on.</p>
+<p>Ok enough talking let's implement the plugin behavior. </p>
+<p><strong>Name:</strong></p>
+<p>First our plugin needs to have a name. </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">name</span><span>(&amp;</span><span style="color:#bf616a;">self</span><span>) -&gt; &amp;</span><span style="color:#b48ead;">str </span><span>{
+</span><span>  &quot;</span><span style="color:#a3be8c;">stackoverflow</span><span>&quot;
+</span><span>}
+</span></code></pre>
+<p><strong>Search:</strong> </p>
+<p>Now we need to define how it will respond to pop-launcher search queries.</p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">search</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">query</span><span>: &amp;</span><span style="color:#b48ead;">str</span><span>) {
+</span><span>  </span><span style="color:#b48ead;">match</span><span> query.</span><span style="color:#96b5b4;">strip_prefix</span><span>(&quot;</span><span style="color:#a3be8c;">stk </span><span>&quot;) {
+</span><span>    Some(query) =&gt; </span><span style="color:#b48ead;">match </span><span style="color:#96b5b4;">search_posts</span><span>(query) {
+</span><span>      Ok(response) =&gt; </span><span style="color:#bf616a;">self</span><span>.items = response.items,
+</span><span>      Err(err) =&gt; error!(&quot;</span><span style="color:#a3be8c;">Failed to get posts from stackoverflow: {err}</span><span>&quot;),
+</span><span>    },
+</span><span>    None =&gt; {}
+</span><span>  }
+</span><span>
+</span><span>  </span><span style="color:#b48ead;">for </span><span>(idx, post) in </span><span style="color:#bf616a;">self</span><span>.items.</span><span style="color:#96b5b4;">iter</span><span>().</span><span style="color:#96b5b4;">enumerate</span><span>() {
+</span><span>    </span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">respond_with</span><span>(PluginResponse::Append(PluginSearchResult {
+</span><span>      id: idx as </span><span style="color:#b48ead;">u32</span><span>,
+</span><span>      name: post.title.</span><span style="color:#96b5b4;">clone</span><span>(),
+</span><span>      description: post.link.</span><span style="color:#96b5b4;">clone</span><span>(),
+</span><span>      ..Default::default()
+</span><span>    })).await
+</span><span>  }
+</span><span>
+</span><span>  </span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">respond_with</span><span>(PluginResponse::Finished).await
+</span><span>}
+</span></code></pre>
+<p>The first step here is to strip out the query prefix <code>&quot;stk &quot;</code>. Pop-launcher will only 
+dispatch query to our plugin when it matches the regex defined in the <code>plugin.ron</code> config.
+For now, we just assume this regex matches anything starting with <code>&quot;stk &quot;</code>.</p>
+<p>Then we run the <code>search_posts</code> function with our query and store the result in the plugin struct.
+Finally , dispatch the response via stdout using the <code>respond_with</code> helper function.
+If an error occurs during our http call let's just log that with the <code>tracing::error!</code> macro.</p>
+<p>Pop-launcher expect any amount of <code>PluginResponse::Append</code> messages, followed by a
+<code>PluginResponse::Finished</code>, note that if we forgot to send the <code>Finished</code> message, the launcher will endlessly wait
+and never display our search results. </p>
+<p>In the <code>PluginSearchResult</code> respond we use the post index as an identifier, which will be needed to activate the 
+entry later on. We fill the <code>name</code> and <code>description</code> and leave the rest set to their default values as we don't need them
+yet. </p>
+<p><strong>Activation:</strong></p>
+<p>When pop-launcher request an item activation, we use the <code>xdg_open</code> helper function to open our stackoverflow link 
+in the browser. Finally, we respond with <code>PluginResponse::Close</code> and we are done. </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">use </span><span>pop_launcher_toolkit::plugins::xdg_open;
+</span><span>
+</span><span>async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">activate</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">id</span><span>: Indice) {
+</span><span>  </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self</span><span>.items.</span><span style="color:#96b5b4;">get</span><span>(id as </span><span style="color:#b48ead;">usize</span><span>) {
+</span><span>    Some(post) =&gt; </span><span style="color:#96b5b4;">xdg_open</span><span>(&amp;post.link),
+</span><span>    None =&gt; error!(&quot;</span><span style="color:#a3be8c;">Failed to get post at index {id}</span><span>&quot;),
+</span><span>  }
+</span><span>
+</span><span>  </span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">respond_with</span><span>(PluginResponse::Close).await;
+</span><span>}
+</span></code></pre>
+<h2 id="running-the-plugin">Running the plugin</h2>
+<p>Now that we are done with the required implementation, the last step is to run our plugin.</p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">tokio</span><span>::</span><span style="color:#bf616a;">main</span><span>(flavor = &quot;</span><span style="color:#a3be8c;">current_thread</span><span>&quot;)]
+</span><span>async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span>() {
+</span><span>    </span><span style="color:#b48ead;">let mut</span><span> plugin = StackOverflowPlugin::default();
+</span><span>    plugin.</span><span style="color:#96b5b4;">run</span><span>().await
+</span><span>}
+</span></code></pre>
+<p>We spawn the async tokio runtime on a single thread with <code>#[tokio::main(flavor = &quot;current_thread&quot;)]</code>
+and then all we need to do is to initialize our plugin and call the default <code>run</code> function provided by the <code>PluginExt</code>
+trait. </p>
+<p>Before integrating this into our pop-launcher frontend we can test our plugin manually.
+Since the plugin use stdin to receive query and write search results back to stdout we can run it in a terminal
+and type our request. </p>
+<p>In the example above we sent the <code>{&quot;Search&quot;: &quot;stk async trait&quot;}</code> search request and activate the first item with
+<code>{&quot;Activate&quot;: 0}</code>. This should open the stackoverflow post in new browser window:</p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>/usr/bin/cargo run --color=always --package pop-launcher-stackoverflow --bin pop-launcher-stackoverflow
+</span><span>    Finished dev [unoptimized + debuginfo] target(s) in 0.25s
+</span><span>     Running `target/debug/pop-launcher-stackoverflow`
+</span><span>{&quot;Search&quot;: &quot;stk async trait&quot;}
+</span><span>{&quot;Append&quot;:{&quot;id&quot;:0,&quot;name&quot;:&quot;Future is not Send, only when from async Trait&quot;,&quot;description&quot;:&quot;https://stackoverflow.com/questions/72341910/future-is-not-send-only-when-from-async-trait&quot;,&quot;keywords&quot;:null,&quot;icon&quot;:null,&quot;exec&quot;:null,&quot;window&quot;:null}}
+</span><span>{&quot;Append&quot;:{&quot;id&quot;:1,&quot;name&quot;:&quot;Surf dependency causes &amp;quot;cannot be shared between threads safely&amp;quot; error in previously compiling program with matrix_sdk and async-trait&quot;,&quot;description&quot;:&quot;https://stackoverflow.com/questions/71077261/surf-dependency-causes-cannot-be-shared-between-threads-safely-error-in-previo&quot;,&quot;keywords&quot;:null,&quot;icon&quot;:null,&quot;exec&quot;:null,&quot;window&quot;:null}}
+</span><span>{&quot;Append&quot;:{&quot;id&quot;:2,&quot;name&quot;:&quot;Generic async trait that returns the implemented Struct&quot;,&quot;description&quot;:&quot;https://stackoverflow.com/questions/70995999/generic-async-trait-that-returns-the-implemented-struct&quot;,&quot;keywords&quot;:null,&quot;icon&quot;:null,&quot;exec&quot;:null,&quot;window&quot;:null}}
+</span><span>{&quot;Append&quot;:{&quot;id&quot;:3,&quot;name&quot;:&quot;Async trait methods with associated return type and dynamic dispatch&quot;,&quot;description&quot;:&quot;https://stackoverflow.com/questions/70713691/async-trait-methods-with-associated-return-type-and-dynamic-dispatch&quot;,&quot;keywords&quot;:null,&quot;icon&quot;:null,&quot;exec&quot;:null,&quot;window&quot;:null}}
+</span><span>&quot;Finished&quot;
+</span><span>{&quot;Activate&quot;: 0} 
+</span><span>&quot;Close&quot;
+</span></code></pre>
+<h3 id="installing-the-plugin">Installing the plugin</h3>
+<p>To make pop-launcher aware of our plugin we need to write a <code>plugin.ron</code> file and move that along with our plugin binary
+to the pop-launcher plugin directory. To do so, we will use <a href="https://github.com/casey/just">just</a> make the installation
+setup reproducible. </p>
+<p><strong>plugin.ron</strong></p>
+<p>This is our plugin configuration, note that we added the stackoverflow icon downloaded from the 
+<a href="https://github.com/StackExchange/Stacks-Icons/blob/production/src/Icon/LogoGlyph.svg">Stack-Icons repository</a>.</p>
+<pre data-lang="ron" style="background-color:#2b303b;color:#c0c5ce;" class="language-ron "><code class="language-ron" data-lang="ron"><span>(
+</span><span>  name: &quot;StackoverFlow&quot;,
+</span><span>  description: &quot;Search Stackoverflow posts&quot;,
+</span><span>  bin: (
+</span><span>    path: &quot;pop-launcher-stackoverflow&quot;,
+</span><span>  ),
+</span><span>  icon: Name(&quot;stackoverflow&quot;),
+</span><span>  query: (
+</span><span>    isolate: true,
+</span><span>    regex: &quot;^(stk )+&quot;,
+</span><span>    help: &quot;stk &quot;,
+</span><span>  )
+</span><span>)
+</span></code></pre>
+<p><strong>justfile:</strong></p>
+<pre data-lang="just" style="background-color:#2b303b;color:#c0c5ce;" class="language-just "><code class="language-just" data-lang="just"><span>#!/usr/bin/env just --justfile
+</span><span>
+</span><span>install:
+</span><span>    cargo build --release
+</span><span>    mkdir -p ~/.local/share/pop-launcher/plugins/stackoverflow
+</span><span>    install -Dm0755 target/release/pop-launcher-stackoverflow ~/.local/share/pop-launcher/plugins/stackoverflow/pop-launcher-stackoverflow
+</span><span>    install -Dm644 plugin.ron ~/.local/share/pop-launcher/plugins/stackoverflow/plugin.ron
+</span><span>    sudo install -Dm644 LogoGlyph.svg /usr/share/pixmaps/stackoverflow.svg
+</span></code></pre>
+<p>We are all setup let run <code>just install</code> and our plugin should be available in pop-launcher. </p>
+<h3 id="debugging">Debugging</h3>
+<p>Let's test this with our pop-launcher frontend : </p>
+<p><img src="https://oknozor.github.io/blog/write-a-pop-launcher-plugin/../images/pop-launcher-plugin-not-working.png" alt="pop-launcher-plugin-not-working-screenshot" /></p>
+<p>Strange, I works but feels a bit slow, also the search result does not always match the query I was typing.</p>
+<p>Let's take a look at the plugin logs at <code>~/.local/state/pop-launcher/stackoverflow.log</code> : </p>
+<pre data-lang="shell" style="background-color:#2b303b;color:#c0c5ce;" class="language-shell "><code class="language-shell" data-lang="shell"><span>.local/state/pop-launcher
+</span><span>❯ tail -f stackoverflow.log
+</span><span>2022-05-28T08:05:28.012486Z ERROR pop_launcher_stackoverflow: Failed to get posts from stackoverflow: 
+</span><span>https://api.stackexchange.com/2.3/search?page=1&amp;pagesize=8&amp;order=desc&amp;sort=activity&amp;site=stackoverflow&amp;intitle=
+</span><span>: status code 400
+</span></code></pre>
+<p>Mhh, it seems we are sending a request with the <code>intitle=</code> parameter empty.</p>
+<p>Let's adjust the <code>search</code> function so it does not try to make empty queries : </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">search</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">query</span><span>: &amp;</span><span style="color:#b48ead;">str</span><span>) {
+</span><span>  </span><span style="color:#b48ead;">match</span><span> query.</span><span style="color:#96b5b4;">strip_prefix</span><span>(&quot;</span><span style="color:#a3be8c;">stk </span><span>&quot;) {
+</span><span>    Some(query) </span><span style="color:#b48ead;">if </span><span>!query.</span><span style="color:#96b5b4;">is_empty</span><span>() =&gt; </span><span style="color:#b48ead;">match </span><span style="color:#96b5b4;">search_posts</span><span>(query) {
+</span><span>      Ok(response) =&gt; </span><span style="color:#bf616a;">self</span><span>.items = response.items,
+</span><span>      Err(err) =&gt; error!(&quot;</span><span style="color:#a3be8c;">Failed to get posts from stackoverflow: {err}</span><span>&quot;),
+</span><span>    },
+</span><span>    _ =&gt; {}
+</span><span>  }
+</span><span>
+</span><span>  </span><span style="color:#b48ead;">for </span><span>(idx, post) in </span><span style="color:#bf616a;">self</span><span>.items.</span><span style="color:#96b5b4;">iter</span><span>().</span><span style="color:#96b5b4;">enumerate</span><span>() {
+</span><span>    </span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">respond_with</span><span>(PluginResponse::Append(PluginSearchResult {
+</span><span>      id: idx as </span><span style="color:#b48ead;">u32</span><span>,
+</span><span>      name: post.title.</span><span style="color:#96b5b4;">clone</span><span>(),
+</span><span>      description: post.link.</span><span style="color:#96b5b4;">clone</span><span>(),
+</span><span>      ..Default::default()
+</span><span>    })).await
+</span><span>  }
+</span><span>
+</span><span>  </span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">respond_with</span><span>(PluginResponse::Finished).await
+</span><span>}
+</span></code></pre>
+<p>It kinda works, but we still have to send an icon per entry, and it's overall quite slow.</p>
+<p>You can take a look at the current implementation here: <a href="https://github.com/oknozor/pop-launcher-stackoverflow/tree/tutorial/step1">pop-launcher-stackoverflow/step1</a> </p>
+<p>By now you should be able to write your own simple plugins.
+However, our stackoverflow plugin is far from being ready, let's now dive into more advanced stuff. </p>
+<h2 id="advanced-implementation">Advanced implementation</h2>
+<p>Our main issue here is that we are getting our search results via HTTP which is very slow compared to plugins
+getting their entries via the file system, or anything locally available on our machine really.</p>
+<p>Mix that with async code and things get messy. Maybe you noticed, sometime the plugin will display result
+from a previous query instead of the current one. pop-launcher will read the last search result we sent but since our code
+runs asynchronously there is no guarantee http request will respond in the order they were issued.</p>
+<p>To get thing right we need to make use of the interrupt mechanism provided by pop-launcher: prior to sending new
+search query, pop-launcher will send an interrupt signal. Upon receiving this signal we will cancel all ongoing requests
+except the current one.</p>
+<h3 id="sending-interrupts">Sending interrupts</h3>
+<p>This will require a bit of refactoring and if you are new to rust this is going to be somewhat challenging. 
+Please bear with me while we detail the implementation.</p>
+<ol>
+<li><strong>broadcasting the interrupt:</strong></li>
+</ol>
+<p>Every time we have a new search request we will need to pair it with a receiver listening for interruption requests. 
+Because of that we need a multi-consumer, multi-producer channel, aka <a href="https://docs.rs/tokio/latest/tokio/sync/broadcast/index.html"><code>tokio::sync::broadcast</code></a>. </p>
+<p>First we need hold the channel in our plugin struct: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">struct </span><span>StackOverflowPlugin {
+</span><span>    </span><span style="color:#bf616a;">items</span><span>: Vec&lt;StackOverFlowPost&gt;&gt;,
+</span><span>    </span><span style="color:#bf616a;">interrupt</span><span>: broadcast::Sender&lt;()&gt;,
+</span><span>}
+</span></code></pre>
+<p>And then, dispatch the interruption request send by pop-launcher to our tokio tasks by overriding the
+<code>interrupt</code> function in the <code>PluginExt</code> impl block.</p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">async_trait</span><span>]
+</span><span style="color:#b48ead;">impl </span><span>PluginExt </span><span style="color:#b48ead;">for </span><span>StackOverflowPlugin {
+</span><span style="color:#65737e;">// ...
+</span><span>    async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">interrupt</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>) {
+</span><span>        </span><span style="color:#65737e;">// Notify the ongoing search tasks they need to interrupt
+</span><span>        </span><span style="color:#b48ead;">let </span><span>_ = </span><span style="color:#bf616a;">self</span><span>.interrupt.</span><span style="color:#96b5b4;">send</span><span>(());
+</span><span>        </span><span style="color:#65737e;">// Clear the current search results
+</span><span>        </span><span style="color:#bf616a;">self</span><span>.items.</span><span style="color:#96b5b4;">clear</span><span>();
+</span><span>        </span><span style="color:#65737e;">// Tell pop-launcher we are done
+</span><span>        </span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">respond_with</span><span>(PluginResponse::Finished).await;
+</span><span>    }
+</span><span>}
+</span></code></pre>
+<ol start="2">
+<li><strong>The <code>select!</code> macro</strong></li>
+</ol>
+<p>To implement the interrupt mechanism we will use the tokio <a href="https://tokio.rs/tokio/tutorial/select"><code>select!</code></a> macro, which allows waiting on multiple
+async computations and returns when a single computation completes.</p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>tokio::spawn(async </span><span style="color:#b48ead;">move </span><span>{
+</span><span>    select! {
+</span><span>        </span><span style="color:#65737e;">// Make our http call to stackoverflow
+</span><span>        query_result = </span><span style="color:#96b5b4;">search_posts</span><span>(&amp;query) =&gt; {
+</span><span>            </span><span style="color:#65737e;">// Do something with our results
+</span><span>        }
+</span><span>
+</span><span>        </span><span style="color:#65737e;">// Just return on interrupt request
+</span><span>        Ok(()) = interrupt.</span><span style="color:#96b5b4;">recv</span><span>() =&gt; {
+</span><span>            </span><span style="color:#65737e;">// Do nothing
+</span><span>        }
+</span><span>    }
+</span><span>});
+</span></code></pre>
+<p>Here we spawn a tokio task selecting between either a completed search request or an interruption.
+This is where thing gets a little complicated if you are not familiar rust ownership rules, lifetime and the
+<a href="https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html">borrow checker</a>.</p>
+<p>Let's demonstrate the problem with a simple example: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>    async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">search</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">query</span><span>: &amp;</span><span style="color:#b48ead;">str</span><span>) {
+</span><span>        tokio::spawn(async </span><span style="color:#b48ead;">move </span><span>{
+</span><span>            </span><span style="color:#bf616a;">self</span><span>.items = </span><span style="color:#96b5b4;">search_posts</span><span>(query).</span><span style="color:#96b5b4;">unwrap</span><span>().items;
+</span><span>        });
+</span><span>    }
+</span></code></pre>
+<p>Here we tried to wrap our search function in a tokio task, so we can later implement the interruption mechanism.
+Compiling this will produce the following error: </p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>error[E0759]: `self` has lifetime `&#39;life0` but it needs to satisfy a `&#39;static` lifetime requirement
+</span><span>   --&gt; src/main.rs:22:26
+</span><span>    |
+</span><span>22  |     async fn search(&amp;mut self, query: &amp;str) {
+</span><span>    |                          ^^^^ this data with lifetime `&#39;life0`...
+</span><span>23  |         tokio::spawn(async move {
+</span><span>    |         ------------ ...is used and required to live as long as `&#39;static` here
+</span><span>    |
+</span><span>note: `&#39;static` lifetime requirement introduced by this bound
+</span><span>   --&gt; /home/okno/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.18.2/src/task/spawn.rs:127:28
+</span><span>    |
+</span><span>127 |         T: Future + Send + &#39;static,
+</span><span>    |                            ^^^^^^^
+</span></code></pre>
+<p>The problem is that tokio task requires any values in its scope to live for the <code>'static</code> lifetime. 
+Our plugin struct is accessed via a mutable reference here, and we have no guarantee it will live long enough. 
+Worst, even if we somehow managed to guarantee our plugin lifetime is valid, we would need to take multiple mutable 
+references to our plugin struct (one per tokio task). This violates rust <a href="https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html">ownership rules</a>.</p>
+<ol start="3">
+<li><strong>Wrapping everything together</strong>:</li>
+</ol>
+<p>To bypass these limitations we need to add an extra layer of message passing and ensure concurrent search results can be written 
+in a thread safe way. To achieve this we will need a mutable thread-safe, reference-counting smart pointer aka <code>Arc&lt;Mutex&gt;</code>: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">struct </span><span>StackOverflowPlugin {
+</span><span>    </span><span style="color:#bf616a;">items</span><span>: Arc&lt;Mutex&lt;Vec&lt;StackOverFlowPost&gt;&gt;&gt;,
+</span><span>    </span><span style="color:#bf616a;">search_tx</span><span>: mpsc::Sender&lt;Vec&lt;StackOverFlowPost&gt;&gt;,
+</span><span>    </span><span style="color:#bf616a;">interrupt</span><span>: broadcast::Sender&lt;()&gt;,
+</span><span>}
+</span></code></pre>
+<p>Our <code>PluginExt::search</code> function will now hold the search/interrupt logic : </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#65737e;">// ... 
+</span><span>
+</span><span>tokio::spawn(async </span><span style="color:#b48ead;">move </span><span>{
+</span><span>    select! {
+</span><span>        query_result = </span><span style="color:#96b5b4;">search_posts</span><span>(&amp;query, &amp;access_token) =&gt; {
+</span><span>            </span><span style="color:#b48ead;">match</span><span> query_result {
+</span><span>                Ok(query_result) =&gt; sender.</span><span style="color:#96b5b4;">send</span><span>(query_result.items).await.</span><span style="color:#96b5b4;">expect</span><span>(&quot;</span><span style="color:#a3be8c;">Failed to send query result</span><span>&quot;),
+</span><span>                Err(why) =&gt; error!(&quot;</span><span style="color:#a3be8c;">Failed to obtain query result from github: {why}</span><span>&quot;)
+</span><span>            }
+</span><span>        }
+</span><span>
+</span><span>        Ok(()) = interrupt.</span><span style="color:#96b5b4;">recv</span><span>() =&gt; {
+</span><span>            </span><span style="color:#65737e;">// Just return from this future
+</span><span>        }
+</span><span>    }
+</span><span>});
+</span></code></pre>
+<p>We can now handle search results in a separate async task top get read of the lifetime limitation: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">dispatch_search_result</span><span>(
+</span><span>    </span><span style="color:#bf616a;">search_rx</span><span>: &amp;</span><span style="color:#b48ead;">mut </span><span>Receiver&lt;Vec&lt;StackOverFlowPost&gt;&gt;,
+</span><span>    </span><span style="color:#bf616a;">search_results</span><span>: Arc&lt;Mutex&lt;Vec&lt;StackOverFlowPost&gt;&gt;&gt;,
+</span><span>) {
+</span><span>    </span><span style="color:#b48ead;">while let </span><span>Some(new_results) = search_rx.</span><span style="color:#96b5b4;">recv</span><span>().await {
+</span><span>        </span><span style="color:#65737e;">// Wrap the mutex guard into a scope so we don&#39;t hold it across the async `send` method.
+</span><span>        </span><span style="color:#b48ead;">let</span><span> plugin_responses: Vec&lt;PluginResponse&gt; = {
+</span><span>            </span><span style="color:#b48ead;">let mut</span><span> search_results = search_results.</span><span style="color:#96b5b4;">lock</span><span>().</span><span style="color:#96b5b4;">unwrap</span><span>();
+</span><span>            *search_results = new_results;
+</span><span>
+</span><span>            search_results
+</span><span>                .</span><span style="color:#96b5b4;">iter</span><span>()
+</span><span>                .</span><span style="color:#96b5b4;">enumerate</span><span>()
+</span><span>                .</span><span style="color:#96b5b4;">map</span><span>(|(</span><span style="color:#bf616a;">idx</span><span>, </span><span style="color:#bf616a;">entry</span><span>)| entry.</span><span style="color:#96b5b4;">to_plugin_response</span><span>(idx as </span><span style="color:#b48ead;">u32</span><span>)) </span><span style="color:#65737e;">// Convert the entry to a PluginResponse
+</span><span>                .</span><span style="color:#96b5b4;">collect</span><span>()
+</span><span>        };
+</span><span>
+</span><span>        </span><span style="color:#65737e;">// Dispatch messages to pop-launcher, notice we don&#39;t use the `respond_with` function since
+</span><span>        </span><span style="color:#65737e;">// We are outside of the `PluginExt` implementor.
+</span><span>        </span><span style="color:#b48ead;">for</span><span> search_result in plugin_responses {
+</span><span>            </span><span style="color:#96b5b4;">send</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span>tokio::io::stdout(), search_result).await;
+</span><span>        }
+</span><span>
+</span><span>        </span><span style="color:#96b5b4;">send</span><span>(&amp;</span><span style="color:#b48ead;">mut </span><span>tokio::io::stdout(), PluginResponse::Finished).await;
+</span><span>    }
+</span><span>}
+</span></code></pre>
+<p>Finally, we need to update our <code>main</code> function: </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">tokio</span><span>::</span><span style="color:#bf616a;">main</span><span>(flavor = &quot;</span><span style="color:#a3be8c;">current_thread</span><span>&quot;)]
+</span><span>async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">main</span><span>() {
+</span><span>    </span><span style="color:#65737e;">// Our search results channel
+</span><span>    </span><span style="color:#b48ead;">let </span><span>(search_tx, </span><span style="color:#b48ead;">mut</span><span> search_rx) = tokio::sync::mpsc::channel(</span><span style="color:#d08770;">8</span><span>);
+</span><span>    </span><span style="color:#65737e;">// The interrupt channel, notice we don&#39;t use the base receiver here. 
+</span><span>    </span><span style="color:#65737e;">// New receiver are created with the `subscribe` function.
+</span><span>    </span><span style="color:#b48ead;">let </span><span>(interrupt, _) = broadcast::channel(</span><span style="color:#d08770;">8</span><span>);
+</span><span>    </span><span style="color:#65737e;">// Our thread safe, mutable smart pointer to the search results
+</span><span>    </span><span style="color:#b48ead;">let</span><span> search_results = Arc::new(Mutex::new(vec![]));
+</span><span>
+</span><span>    </span><span style="color:#65737e;">// Our plugin struct, now holding the interrupt broadcast sender, the search results sender and the 
+</span><span>    </span><span style="color:#65737e;">// search result pointer.
+</span><span>    </span><span style="color:#b48ead;">let mut</span><span> plugin = StackOverflowPlugin {
+</span><span>        items: Arc::clone(&amp;search_results),
+</span><span>        search_tx,
+</span><span>        interrupt,
+</span><span>    };
+</span><span>
+</span><span>    </span><span style="color:#65737e;">// Last but not least, we use the `tokio::join!` macro to run our plugin 
+</span><span>    </span><span style="color:#65737e;">// And the dispatch task concurrently. 
+</span><span>    </span><span style="color:#b48ead;">let </span><span>_ = tokio::join!(
+</span><span>        plugin.</span><span style="color:#96b5b4;">run</span><span>(),
+</span><span>        </span><span style="color:#96b5b4;">dispatch_search_result</span><span>(&amp;</span><span style="color:#b48ead;">mut</span><span> search_rx, search_results)
+</span><span>    );
+</span><span>}
+</span></code></pre>
+<h3 id="the-final-touch">The final touch</h3>
+<p>If you followed the previous step carefully the plugin should now be working again.</p>
+<p>But there are still few things we can improve: </p>
+<ul>
+<li>stackoverflow json responses sometime contains unescaped html characters.</li>
+<li>displaying urls in the search result description in not very useful, tags would probably be better.</li>
+<li>we still don't have a main icon for our search results.</li>
+<li>Stackoverflow API imposes request quotas for non-authenticated users.</li>
+</ul>
+<p>Let's first handle how we display the search results by adding the <code>tags</code> and <code>is_answered</code>
+json attributes.</p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">derive</span><span>(Deserialize, Debug, PartialEq)]
+</span><span style="color:#b48ead;">struct </span><span>StackOverFlowPost {
+</span><span>    </span><span style="color:#bf616a;">title</span><span>: String,
+</span><span>    </span><span style="color:#bf616a;">score</span><span>: </span><span style="color:#b48ead;">i32</span><span>,
+</span><span>    </span><span style="color:#bf616a;">link</span><span>: String,
+</span><span>    </span><span style="color:#bf616a;">tags</span><span>: Vec&lt;String&gt;,
+</span><span>    </span><span style="color:#bf616a;">is_answered</span><span>: </span><span style="color:#b48ead;">bool</span><span>,
+</span><span>}
+</span></code></pre>
+<p>I omitted the <code>to_plugin_response</code> implementation on purpose in the previous section. We will now implement it,
+so it displays the post tags, escape html characters with the <code>htmlescape</code> crate and use different
+icons for answered posts : </p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span style="color:#b48ead;">impl </span><span>StackOverFlowPost {
+</span><span>    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">tags</span><span>(&amp;</span><span style="color:#bf616a;">self</span><span>) -&gt; String {
+</span><span>        </span><span style="color:#bf616a;">self</span><span>.tags.</span><span style="color:#96b5b4;">join</span><span>(&quot;</span><span style="color:#a3be8c;">, </span><span>&quot;)
+</span><span>    }
+</span><span>
+</span><span>    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">to_plugin_response</span><span>(&amp;</span><span style="color:#bf616a;">self</span><span>, </span><span style="color:#bf616a;">idx</span><span>: </span><span style="color:#b48ead;">u32</span><span>) -&gt; PluginResponse {
+</span><span>        PluginResponse::Append(PluginSearchResult {
+</span><span>            id: idx as </span><span style="color:#b48ead;">u32</span><span>,
+</span><span>            name: </span><span style="color:#96b5b4;">decode_html</span><span>(&amp;</span><span style="color:#bf616a;">self</span><span>.title.</span><span style="color:#96b5b4;">clone</span><span>()).</span><span style="color:#96b5b4;">expect</span><span>(&quot;</span><span style="color:#a3be8c;">Decode error</span><span>&quot;).</span><span style="color:#96b5b4;">to_string</span><span>(),
+</span><span>            description: </span><span style="color:#96b5b4;">decode_html</span><span>(&amp;</span><span style="color:#bf616a;">self</span><span>.</span><span style="color:#96b5b4;">tags</span><span>()).</span><span style="color:#96b5b4;">expect</span><span>(&quot;</span><span style="color:#a3be8c;">Decode error</span><span>&quot;).</span><span style="color:#96b5b4;">to_string</span><span>(),
+</span><span>            icon: </span><span style="color:#b48ead;">if </span><span style="color:#bf616a;">self</span><span>.is_answered {
+</span><span>                Some(IconSource::Name(Cow::Owned(&quot;</span><span style="color:#a3be8c;">emblem-checked</span><span>&quot;.</span><span style="color:#96b5b4;">to_string</span><span>())))
+</span><span>            } </span><span style="color:#b48ead;">else </span><span>{
+</span><span>                Some(IconSource::Name(Cow::Owned(&quot;</span><span style="color:#a3be8c;">error</span><span>&quot;.</span><span style="color:#96b5b4;">to_string</span><span>())))
+</span><span>            },
+</span><span>            ..Default::default()
+</span><span>        })
+</span><span>    }
+</span><span>}
+</span></code></pre>
+<p>Finally, we will add another config file to use a stackoverflow <code>access_token</code>. I won't explain the 
+details here, but you can take a look at the final result: <a href="https://github.com/oknozor/pop-launcher-stackoverflow">oknozor/pop-launcher-stackoverflow</a></p>
+<pre data-lang="rust" style="background-color:#2b303b;color:#c0c5ce;" class="language-rust "><code class="language-rust" data-lang="rust"><span>#[</span><span style="color:#bf616a;">derive</span><span>(Deserialize)]
+</span><span style="color:#b48ead;">struct </span><span>PluginConfig {
+</span><span>    </span><span style="color:#bf616a;">access_token</span><span>: String,
+</span><span>}
+</span><span>
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">access_token</span><span>() -&gt; Result&lt;String&gt; {
+</span><span>    </span><span style="color:#b48ead;">let</span><span> config = </span><span style="color:#96b5b4;">find</span><span>(&quot;</span><span style="color:#a3be8c;">stackoverflow</span><span>&quot;)
+</span><span>        .</span><span style="color:#96b5b4;">find</span><span>(|</span><span style="color:#bf616a;">path</span><span>| path.</span><span style="color:#96b5b4;">exists</span><span>())
+</span><span>        .</span><span style="color:#96b5b4;">ok_or_else</span><span>(|| anyhow!(&quot;</span><span style="color:#a3be8c;">&#39;config.ron&#39; config file not found for stackoverflow plugin</span><span>&quot;));
+</span><span>
+</span><span>    </span><span style="color:#b48ead;">let</span><span> config = config?;
+</span><span>    </span><span style="color:#b48ead;">let</span><span> config = std::fs::read_to_string(config)?;
+</span><span>    </span><span style="color:#b48ead;">let</span><span> config: PluginConfig = ron::from_str(&amp;config)?;
+</span><span>    Ok(config.access_token)
+</span><span>}
+</span></code></pre>
+<p>And it's done !</p>
+<p><img src="https://oknozor.github.io/blog/write-a-pop-launcher-plugin/../images/onagre-stack-final.png" alt="final-result-screenshot" /></p>
+<h2 id="conclusion">Conclusion</h2>
+<p>As we saw in the first part, creating a simple plugin is quite straight forward. 
+However, things can get complicated if you enter the realm of concurrency and smart pointers.</p>
+<p>Most of the time plugins won't need this kind of  async shenanigans and if you feel overwhelmed by the 
+Rust async ecosystem you could still write your plugin with a more permissive language. </p>
+<p>If something in this tutorial was unclear please don't hesitate to send a PR or to reach out on Twitter. </p>
+<p>I hope you are now going to implement your own plugins. 
+Please share your plugins on <a href="https://github.com/lucas-dclrcq/awesome-pop-launcher">lucas-dclrcq/awesome-pop-launcher</a>, 
+we maintain an exhaustive list of community plugins here, and we would be delighted to see the list grow. </p>
+<p>Happy coding !</p>
+
+</div>
+
+        </div>
+
+    </body>
+
+</html>

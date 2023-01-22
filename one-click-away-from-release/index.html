@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+      <!-- Enable responsiveness on mobile devices-->
+      <!-- viewport-fit=cover is to support iPhone X rounded corners and notch in landscape-->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+
+      <title>Okno&#x27;s blog</title>
+
+      <!-- CSS -->
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/print.css" media="print">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/poole.css">
+      <link rel="stylesheet" href="https://oknozor.github.io/blog/hyde.css">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Sans:400,400italic,700|Abril+Fatface">
+
+      
+
+      
+      
+    </head>
+
+    <body class="theme-base-0d ">
+        
+            <div class="sidebar">
+                <div class="container sidebar-sticky">
+                    <div class="sidebar-about">
+                        
+                            <a href="https:&#x2F;&#x2F;oknozor.github.io&#x2F;blog"><h1>Okno&#x27;s blog</h1></a>
+                            
+                            <p class="lead">Hello, I am Paul Delafosse AKA Okno, Java software developer by day
+Rustacean by night. 
+</p>
+                            
+                        
+                    </div>
+
+                    <ul class="sidebar-nav">
+                        
+                        
+                        
+                    </ul>
+                </div>
+            </div>
+        
+
+        <div class="content container">
+            
+<div class="post">
+  <h1 class="post-title">One click away from the next release</h1>
+  <span class="post-date">2021-11-26</span>
+  <p>My first encounter with the <a href="https://www.conventionalcommits.org/en/v1.0.0/">Conventional Commits</a>
+specification occurred during my internship a couple of year ago.
+We were using the spec in most of our projects. </p>
+<p>Having dealt before with commit logs polluted with meaningless commit messages such as &quot;test&quot;, &quot;fix bug&quot;, 
+enforcing a commit convention to have a nice human-readable git history felt good. But I soon realised that
+we were still missing the point.</p>
+<p>At the time I was also learning Rust, so I started a hobby project called <a href="https://docs.cocogitto.io/">Cocogitto</a>, 
+a cli to enforce and leverage the specification. </p>
+<p>Today I pleased to release Cocogitto <code>4.0.0</code> !</p>
+<p>In this article I will take you through a quick tour of the project and show you how you can automate your SemVer Release with it. 
+But before that we need to talk a bit more about the specification itself.
+I will assume basic knowledge of both <a href="https://semver.org/">SemVer</a>
+and <a href="https://www.conventionalcommits.org/en/v1.0.0/">Conventional Commits</a>. If you have not read those specs yet
+go read them now ! </p>
+<h2 id="conventional-commits-and-semver">Conventional Commits and SemVer</h2>
+<blockquote>
+<p><em>&quot;This convention dovetails with SemVer, by describing the features, fixes, and breaking changes made in commit messages.&quot;</em></p>
+</blockquote>
+<p>This is probably the most important thing to know about Conventional Commits: it was designed to help you use SemVer.
+There are other benefits to use the specification but these are just side effects in my opinion. </p>
+<p><strong>How does it work ?</strong></p>
+<p>The rule is quite simple actually , If your commit history since the latest tag contains at least one: </p>
+<ul>
+<li><strong>bug fix</strong> commit, increment the <code>PATCH</code> version.</li>
+<li><strong>feature</strong> commit, the next version should increment the <code>MINOR</code> version number.</li>
+<li><strong>breaking change</strong> commit, increment the <code>MAJOR</code> version number.</li>
+</ul>
+<p><strong>Example:</strong></p>
+<p>Let's look at a chunk of commit history from Cocogitto. 
+Here the current version is <code>3.0.0</code> in the example above we have a <code>feat</code> commit. If we create a version now
+it shall be <code>3.1.0</code>. Dead simple, actually.</p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>* 16cf259 - (HEAD) docs: update readme
+</span><span>* bb07f38 - chore: use MIT license in cargo.toml
+</span><span>* d0a40b6 - ci: update codecov action
+</span><span>* 916adb9 - chore: remove aur package submodule #141
+</span><span>* 1d29e96 - feat(cli): improve commit format error format
+</span><span>* b2ef3aa - fix(bump): fix target changelog tag on bump
+</span></code></pre>
+<h2 id="why-do-we-need-a-commit-message-convention">Why do we need a commit message convention ?</h2>
+<p>Ok, I have just been rephrasing the spec at this point, but let us consider this:</p>
+<blockquote>
+<p><em>The Conventional Commits specification is a lightweight convention on top of commit messages. It provides an easy 
+set of rules for creating an explicit commit history; which makes it easier to write <strong>automated tools</strong> on top of.</em> </p>
+</blockquote>
+<p>In other words, there is absolutely no good reason to use Conventional Commits (or any other convention)
+if you don't leverage the available tooling to automate repetitive tasks. This is what I meant when saying we were 
+missing the point. </p>
+<p>I have seen projects using <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>
+without keeping a changelog, conventional Commits without Semver. There are also some crazy people out there
+using emoji in commit messages.</p>
+<p>Please don't do those things!</p>
+<p>Conventional Commits <em>&quot;makes it easier to write automated tools&quot;</em> and luckily there are <a href="https://www.conventionalcommits.org/en/about/">plenty</a>.</p>
+<p>If you are absolutely sure you don't need a changelog or semantic versioning, you will probably be better off writing
+clear and concise commit messages using natural language. </p>
+<p>On the other hand if you do need automation, semantic versioning, 
+generated changelogs and all the good stuff. You might want to use Conventional Commits with the proper tooling.</p>
+<h2 id="introducing-cocogitto">Introducing Cocogitto</h2>
+<p>When working on a project with git you create commits locally, push them to a remote repository and package them via some
+CI/CI pipelines. </p>
+<p>There is an implicit boundary between where the code is written (your machine) and where the code lives (anywhere else). 
+Cocogitto reflect that by being split in two distinct binaries : </p>
+<ul>
+<li><code>coco</code> which provides everything you need to create conventional commits.</li>
+<li><code>cog</code> containing the tools needed to enforce and leverage the convention.</li>
+</ul>
+<p>Before going further we will take a quick tour of the project capabilities.
+Note that this is just a quick intro, if you want an in depth guide you can check the <a href="https://docs.cocogitto.io/">official documentation</a>.</p>
+<h3 id="creating-conventional-commits">Creating conventional commits</h3>
+<p><code>coco</code> as a set of subcommands matching the Conventional Commits and <a href="https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines">Angular commits types</a>.
+You can add new subcommands in a config file named <code>cog.toml</code> in your repository if needed. </p>
+<p><strong>How do I create a commit ?</strong></p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">coco</span><span> feat &quot;</span><span style="color:#a3be8c;">implement parser specification</span><span>&quot;
+</span><span style="color:#65737e;"># -&gt; &#39;feat: implement parser specification&#39;
+</span></code></pre>
+<p><strong>What if we need a commit scope ?</strong> </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">coco</span><span> feat &quot;</span><span style="color:#a3be8c;">implement parser specification</span><span>&quot; parser
+</span><span style="color:#65737e;"># -&gt; &#39;feat(parser): implement parser specification&#39;
+</span></code></pre>
+<p>Note how the scope is provided after the message, it might seem unintuitive, but I decided I wanted as few flags as possible
+in the command line. </p>
+<p><strong>Ok, I want a breaking change commit now.</strong></p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">coco</span><span> feat</span><span style="color:#bf616a;"> -B </span><span>&quot;</span><span style="color:#a3be8c;">implement parser specification</span><span>&quot;
+</span><span style="color:#65737e;"># -&gt; &#39;feat!(parser): implement parser specification&#39;
+</span></code></pre>
+<p><strong>I need to write a conventional commit message with body and footers</strong></p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">coco</span><span> feat</span><span style="color:#bf616a;"> -B -e </span><span>&quot;</span><span style="color:#a3be8c;">implement parser specification</span><span>&quot;
+</span><span style="color:#65737e;"># -&gt; &#39;feat!(parser): implement parser specification&#39;
+</span></code></pre>
+<p>The <code>-e</code> flag will open an editor prefilled with the entered commit summary :</p>
+<p><img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/coco-edit.png" alt="coco edit example screenshot" /></p>
+<p><strong>What if I still make some mistakes ?</strong></p>
+<p>If you are an expert conventional committer, at this point you might think the CLI design still permit mistake regarding
+the convention. Well if you happen to make a mistake <code>coco</code> will produce an error explaining why your message does not
+respect the convention: </p>
+<p><img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/coco-error.png" alt="coco error example screenshot" /></p>
+<p>Now that we took a quick tour of <code>coco</code>, let's take a look at <code>cog</code> which does all the heavy lifting.</p>
+<h3 id="enforcing-the-specification">Enforcing the specification</h3>
+<p>Creating conventional commits locally is fine but what if the other people working on the project do not use <code>coco</code> ?
+What if I am a clumsy committer and make mistake all the time ?</p>
+<p>There are a multiple ways Cocogitto can help you with that: </p>
+<ul>
+<li>the <code>check</code> subcommand to validate your commit log. </li>
+<li>the <code>install-hook</code> subcommand to generate <code>pre-push</code> and <code>commit-msg</code> <a href="https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks">git-hooks</a>.</li>
+<li><a href="https://github.com/cocogitto/cocogitto-action">cocogitto-action</a> run these checks on your CI</li>
+<li><a href="https://github.com/apps/cocogitto-bot">cocogitto-bot</a> check your PR and let your contributors know when they made a mistake.</li>
+</ul>
+<p><strong>How do I validate my commit history locally?</strong></p>
+<p><img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/cog-check-example.png" alt="cog check screenshot example" /></p>
+<p><strong>How do I install git-hooks ?</strong></p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">cog</span><span> install-hook pre-push
+</span><span style="color:#bf616a;">cog</span><span> install-hook pre-commit
+</span></code></pre>
+<p><strong>How do I use this in my CI pipeline?</strong></p>
+<p>Currently, Cocogitto support GitHub action only, but I am planning to add Gitlab CI and Azure DevOps integration soon. </p>
+<pre data-lang="yaml" style="background-color:#2b303b;color:#c0c5ce;" class="language-yaml "><code class="language-yaml" data-lang="yaml"><span>  - </span><span style="color:#bf616a;">uses</span><span>: </span><span style="color:#a3be8c;">actions/checkout@v2
+</span><span>    </span><span style="color:#bf616a;">with</span><span>:
+</span><span>      </span><span style="color:#bf616a;">fetch-depth</span><span>: </span><span style="color:#d08770;">0
+</span><span>      
+</span><span>  - </span><span style="color:#bf616a;">name</span><span>: </span><span style="color:#a3be8c;">Conventional Commits check
+</span><span>    </span><span style="color:#bf616a;">uses</span><span>: </span><span style="color:#a3be8c;">cocogitto/cocogitto-action@main
+</span><span>    </span><span style="color:#bf616a;">with</span><span>:
+</span><span>      </span><span style="color:#bf616a;">check-latest-tag-only</span><span>: </span><span style="color:#d08770;">true
+</span></code></pre>
+<p><strong>A GitHub bot You said?</strong></p>
+<p><a href="https://github.com/apps/cocogitto-bot">Cocogitto-bot</a> will check every commit on your pull-request.
+It is free of charge and will remain so for public open-source repository. So go ahead and try it ! </p>
+<p><img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/cog-bot-example.png" alt="github bot screenshot example" /></p>
+<h3 id="the-one-click-release">The one click release</h3>
+<p>So far I have been throwing examples and screenshots without giving much context.
+I hope you want to try Cocogitto already, but the interesting part actually starts here. </p>
+<p>Creating and validating commits is great, but not useful in itself. 
+As we saw earlier the purpose of the specification is to automate version increments and changelogs generation.
+This is exactly what we are going to do know. </p>
+<p>In a first part we will set up everything needed to perform automatic version bump from your local machine. 
+Once we are familiar with how it is done we will set up the GitHub action to create version in one click. </p>
+<h4 id="local-bump">Local bump</h4>
+<p>What are the steps we go through when creating releases manually ? </p>
+<p>It probably looks somehow close to this: </p>
+<ol>
+<li>Increment a version number in your package manifest (<code>pom.xml</code>, <code>Package.json</code>, <code>Cargo.toml</code>, <code>go.mod</code>...)</li>
+<li>Create a version commit: <code>git commit -m &quot;chore(version): bump version to 1.1.0&quot;</code></li>
+<li>Tag this commit: <code>git tag 1.1.0</code></li>
+<li>Push everything to remote: <code>git push</code></li>
+<li>Our continuous delivery pipeline detect the tag and perform the following:
+<ul>
+<li>build some artifacts, create a GitHub release</li>
+<li>upload the artifact </li>
+<li>...</li>
+</ul>
+</li>
+<li>Maybe bump the manifest with some pre-release metadata</li>
+</ol>
+<p>When using Conventional Commits and Cocogitto automating this is a piece of cake.</p>
+<h5 id="example">Example</h5>
+<p>To demonstrate how it's done we will use <a href="https://github.com/oknozor/pokemon-api">pokemon-api</a>, a toy
+project made solely for demonstration purpose.
+We don't really care about the actual code here,
+it is a Java project built with maven and that is all you need to know. </p>
+<p>The first thing we need to do is to tell Cocogitto what we want to do before and after tagging the release.
+This is done via the <code>cog.toml</code> config file : </p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span style="color:#bf616a;">pre_bump_hooks </span><span>= [
+</span><span>    &quot;&quot;&quot;
+</span><span style="color:#a3be8c;">        sh -c &quot;./ci/ensure_on_branch_main.sh&quot;
+</span><span style="color:#a3be8c;">    </span><span>&quot;&quot;&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">mvn package -q</span><span>&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">mvn versions:set -DnewVersion={{version}}</span><span>&quot;,
+</span><span>]
+</span><span>
+</span><span style="color:#bf616a;">post_bump_hooks </span><span>= [
+</span><span>    &quot;</span><span style="color:#a3be8c;">git push</span><span>&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">git push origin {{version}}</span><span>&quot;,
+</span><span>]
+</span></code></pre>
+<p>Note that we added a little shell script called <code>ensure_on_branch_main.sh</code> to verify we are not bumping from a feature
+branch, it looks like this : </p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;">#!/bin/sh
+</span><span>
+</span><span style="color:#bf616a;">CURRENT_BRANCH</span><span>=$</span><span style="color:#a3be8c;">(</span><span style="color:#bf616a;">git</span><span style="color:#a3be8c;"> rev-parse</span><span style="color:#bf616a;"> --abbrev-ref</span><span style="color:#a3be8c;"> HEAD)
+</span><span>
+</span><span style="color:#b48ead;">if </span><span style="color:#96b5b4;">[ </span><span>&quot;$</span><span style="color:#bf616a;">CURRENT_BRANCH</span><span>&quot; != &quot;</span><span style="color:#a3be8c;">main</span><span>&quot; </span><span style="color:#96b5b4;">]
+</span><span style="color:#b48ead;">then
+</span><span>    </span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">Needs to be on main to bump current version</span><span>&quot;
+</span><span>    </span><span style="color:#96b5b4;">exit</span><span> 1
+</span><span style="color:#b48ead;">fi
+</span></code></pre>
+<p>Let us now review this config in detail:</p>
+<ul>
+<li><code>pre_bump_hooks</code> contains an array of shell commands to run before performing the release.</li>
+<li><code>post_bump_hooks</code> are run after the release tag has been created. </li>
+<li>On pre-hooks success, Cocogitto will generate a changelog, create a release commit, tag it and 
+then run the post-bump hooks. </li>
+</ul>
+<p>Let's examine the commands.</p>
+<p><strong>Pre-bumps:</strong></p>
+<ol>
+<li><code>sh -c &quot;./ci/ensure_on_branch_main.sh&quot;</code>: ensure we are running the automatic bump on branch <code>main</code>.</li>
+<li><code>mvn package -q</code>: build our project and run the tests. </li>
+<li><code>mvn versions:set -DnewVersion={{version}}</code>: increment the package manifest. The <code>{{version}}</code> variable will be replaced
+with our target version.</li>
+</ol>
+<p><strong>Post-bumps:</strong></p>
+<ol>
+<li><code>git push</code>: push the generated release commit to remote</li>
+<li><code>git push origin {{version}}</code>: push the generated tag to remote. </li>
+</ol>
+<p>We are almost ready to release but there is one more thing we can do.
+Cocogitto will generate a changelog during the release process, we need to tell 
+it how to generate markdown links to commits, tags and GitHub users. </p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[changelog]
+</span><span style="color:#65737e;"># The git platform our project is hosted on
+</span><span style="color:#bf616a;">remote </span><span>= &quot;</span><span style="color:#a3be8c;">github.com</span><span>&quot;
+</span><span style="color:#65737e;"># The repository owner on GitHub
+</span><span style="color:#bf616a;">owner </span><span>= &quot;</span><span style="color:#a3be8c;">oknozor</span><span>&quot;
+</span><span style="color:#65737e;"># The repository name on GitHub
+</span><span style="color:#bf616a;">repository </span><span>= &quot;</span><span style="color:#a3be8c;">pokemon_api</span><span>&quot;
+</span><span style="color:#65737e;"># One of Cocoggito built-in changelog template (possible values are &quot;simple&quot;, &quot;full_hash&quot; and &quot;remote&quot;
+</span><span style="color:#bf616a;">template </span><span>= &quot;</span><span style="color:#a3be8c;">remote</span><span>&quot;
+</span><span style="color:#65737e;"># A list of commit authors with their git signature and GitHub username
+</span><span style="color:#bf616a;">authors </span><span>= [
+</span><span>    { </span><span style="color:#bf616a;">signature </span><span>= &quot;</span><span style="color:#a3be8c;">Paul Delafosse</span><span>&quot;, </span><span style="color:#bf616a;">username </span><span>= &quot;</span><span style="color:#a3be8c;">oknozor</span><span>&quot; }
+</span><span>]
+</span></code></pre>
+<p>Alright we are ready now, let's take a look at our project git log before creating our first release : </p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>* 7403430 - (HEAD -&gt; main, origin/main) chore: Add changelog config in cog.toml
+</span><span>* 809c029 - chore: Remove quarkus example default endpoint
+</span><span>* d4930bf - feat: add automatic release config in cog.toml
+</span><span>* 3d4874c - chore: Initial commit
+</span></code></pre>
+<p>Since there is no version published yet, we should bump from <code>0.0.0</code> to <code>0.1.0</code> :</p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>❯ cog bump --auto                              
+</span><span>Failed to get current version, falling back to 0.0.0
+</span><span>Skipping irrelevant commits:
+</span><span>        - chore: 2
+</span><span>
+</span><span>Found feature commit d4930b
+</span><span>[INFO] Scanning for projects...
+</span><span>[INFO] 
+</span><span>[INFO] --------------------&lt; org.pokemon.api:pokemon-api &gt;---------------------
+</span><span>[INFO] Building pokemon-api 1.0.0-SNAPSHOT
+</span><span>[INFO] --------------------------------[ jar ]---------------------------------
+</span><span>[INFO] 
+</span><span>[INFO] --- versions-maven-plugin:2.8.1:set (default-cli) @ pokemon-api ---
+</span><span>Downloading from central: https://repo.maven.apache.org/maven2/commons-collections/commons-collections/3.2/commons-collections-3.2.pom
+</span><span>Downloaded from central: https://repo.maven.apache.org/maven2/commons-collections/commons-collections/3.2/commons-collections-3.2.pom (0 B at 0 B/s)
+</span><span>...
+</span><span>[INFO] Local aggregation root: /home/okno/_Workshop/MyRepos/pokemon_api
+</span><span>[INFO] Processing change of org.pokemon.api:pokemon-api:1.0.0-SNAPSHOT -&gt; 0.1.0
+</span><span>[INFO] Processing org.pokemon.api:pokemon-api
+</span><span>[INFO]     Updating project org.pokemon.api:pokemon-api
+</span><span>[INFO]         from version 1.0.0-SNAPSHOT to 0.1.0
+</span><span>[INFO] 
+</span><span>[INFO] ------------------------------------------------------------------------
+</span><span>[INFO] BUILD SUCCESS
+</span><span>[INFO] ------------------------------------------------------------------------
+</span><span>[INFO] Total time:  4.329 s
+</span><span>[INFO] Finished at: 2021-11-28T11:04:05+01:00
+</span><span>[INFO] ------------------------------------------------------------------------
+</span><span>Enumerating objects: 6, done.
+</span><span>Counting objects: 100% (6/6), done.
+</span><span>Delta compression using up to 12 threads
+</span><span>Compressing objects: 100% (4/4), done.
+</span><span>Writing objects: 100% (4/4), 817 bytes | 817.00 KiB/s, done.
+</span><span>Total 4 (delta 2), reused 0 (delta 0), pack-reused 0
+</span><span>remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+</span><span>To github.com:oknozor/pokemon-api.git
+</span><span>   7403430..3f0829a  main -&gt; main
+</span><span>Total 0 (delta 0), reused 0 (delta 0), pack-reused 0
+</span><span>To github.com:oknozor/pokemon-api.git
+</span><span> * [new tag]         0.1.0 -&gt; 0.1.0
+</span><span>Bumped version: ... -&gt; 0.1.0
+</span><span>cog bump --auto  29.84s user 2.07s system 219% cpu 14.530 total
+</span></code></pre>
+<p>As you can see everything ran smoothly, we have our tag : </p>
+<pre style="background-color:#2b303b;color:#c0c5ce;"><code><span>* 3f0829a - (HEAD -&gt; main, tag: 0.1.0, origin/main) chore(version): 0.1.0
+</span></code></pre>
+<p>And a changelog has be generated : 
+<img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/changelog-example.png" alt="bump changelog example" /></p>
+<p>From now on, we can repeat this indefinitely. As long as our commit messages are Conventional Commits compliant, 
+we won't have to care about version number or editing changelogs anymore.</p>
+<p>Not only cool because we have just automated a boring and repetitive task, but also <code>cog.toml</code> is documenting our
+git flow. You can adapt the config to build a docker image and deploy it, make sure your main branch is up-to-date with 
+another one, deploy a static website etc.</p>
+<h4 id="the-one-click-release-1">The one click release</h4>
+<p>Creating release from our local machine might be enough for small projects, but it's not ideal.</p>
+<p>Your build might succeed on your local machine but fail on the target environment, maybe you just want to make a statement
+by showing it to the world ? Or you are not working alone on your project ?</p>
+<p>Actually there are plenty of reasons to build your project remotely, and we are not going to list them all. </p>
+<p>Let us turn our toy project release config into a one click CI/CD pipeline: </p>
+<pre data-lang="yaml" style="background-color:#2b303b;color:#c0c5ce;" class="language-yaml "><code class="language-yaml" data-lang="yaml"><span style="color:#65737e;"># .github/workflows/Release.yaml
+</span><span style="color:#bf616a;">name</span><span>: </span><span style="color:#a3be8c;">Release
+</span><span>
+</span><span style="color:#d08770;">on</span><span>:
+</span><span>  </span><span style="color:#bf616a;">workflow_dispatch</span><span>:
+</span><span>    </span><span style="color:#bf616a;">branches</span><span>: </span><span style="color:#a3be8c;">main
+</span><span>
+</span><span style="color:#bf616a;">jobs</span><span>:
+</span><span>  </span><span style="color:#bf616a;">release</span><span>:
+</span><span>    </span><span style="color:#bf616a;">runs-on</span><span>: </span><span style="color:#a3be8c;">ubuntu-latest
+</span><span>    </span><span style="color:#bf616a;">name</span><span>: </span><span style="color:#a3be8c;">Perform release
+</span><span>
+</span><span>    </span><span style="color:#bf616a;">steps</span><span>:
+</span><span>      - </span><span style="color:#bf616a;">uses</span><span>: </span><span style="color:#a3be8c;">actions/checkout@v2
+</span><span>      </span><span style="color:#bf616a;">with</span><span>:
+</span><span>        </span><span style="color:#bf616a;">fetch-depth</span><span>: </span><span style="color:#d08770;">0 </span><span style="color:#65737e;"># mandatory to get the full git history
+</span><span>      - </span><span style="color:#bf616a;">uses</span><span>: </span><span style="color:#a3be8c;">actions/setup-java@v2
+</span><span>        </span><span style="color:#bf616a;">with</span><span>:
+</span><span>          </span><span style="color:#bf616a;">distribution</span><span>: &#39;</span><span style="color:#a3be8c;">temurin</span><span>&#39;
+</span><span>          </span><span style="color:#bf616a;">java-version</span><span>: &#39;</span><span style="color:#a3be8c;">17</span><span>&#39;
+</span><span>
+</span><span>      - </span><span style="color:#bf616a;">name</span><span>: </span><span style="color:#a3be8c;">Cocogitto release
+</span><span>        </span><span style="color:#bf616a;">id</span><span>: </span><span style="color:#a3be8c;">release
+</span><span>        </span><span style="color:#bf616a;">uses</span><span>: </span><span style="color:#a3be8c;">cocogitto/cocogitto-action@v2.1
+</span><span>        </span><span style="color:#bf616a;">with</span><span>:
+</span><span>          </span><span style="color:#bf616a;">release</span><span>: </span><span style="color:#d08770;">true
+</span></code></pre>
+<p>Notice the <code>workflow_dispatch</code> attributes, it adds a &quot;Release&quot; button to the repository action page :</p>
+<p><img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/action-button-screenshot.png" alt="Action release button screenshot" /></p>
+<p>We can now perform a release just by clicking the release button : </p>
+<p><img src="https://oknozor.github.io/blog/one-click-away-from-release/../images/cocogitto/one-click-released.png" alt="One click released" /></p>
+<p>That it, a <a href="https://github.com/oknozor/pokemon-api/commit/153ca762a72b7a4e2345f1316cbc1fa44bbd0f1e">tag</a> was made, 
+the <a href="https://github.com/oknozor/pokemon-api/blob/main/CHANGELOG.md">changelog</a> has been updated, our next release 
+is just one click away.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>This concludes our quick introduction to Cocogitto I hope you will consider giving it a shot.</p>
+<p>Cocogitto is free and open-source and thrives thanks to its contributors, if you have any question please let us
+know on the Github <a href="https://github.com/cocogitto/cocogitto/issues">issue tracker</a>
+or on the chat room <a href="https://matrix.to/#/#cocogitto:matrix.org">#cocogitto:matrix.org</a>.</p>
+<p>Last but no least you can <a href="https://github.com/sponsors/oknozor">buy me a coffee</a>. </p>
+
+</div>
+
+        </div>
+
+    </body>
+
+</html>
